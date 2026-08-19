@@ -1,33 +1,116 @@
-<!doctype html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#050914"><title>AI Trace — Digital Authenticity Intelligence</title>
-<link rel="stylesheet" href="style.css"></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#050914">
+  <title>AI Trace V5 — Digital Authenticity Intelligence</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
 <div class="shell">
-<nav><div class="brand"><div class="mark">A</div><div><b>AI TRACE</b><small>Digital Authenticity Intelligence</small></div></div><span class="pill">V3 • PRIVATE BROWSER ANALYSIS</span></nav>
-<header><span class="over">TRACE DNA™ • TEXT BETA</span><h1>Know what’s real.<br>Know what’s AI.</h1><p>Evidence-first AI content analysis. Your text is analyzed locally in your browser whenever the ML engine is available.</p></header>
+  <nav>
+    <div class="brand">
+      <div class="mark">A</div>
+      <div>
+        <b>AI TRACE</b>
+        <small>Digital Authenticity Intelligence</small>
+      </div>
+    </div>
+    <span class="pill">V5 • SMART 3-MODEL ENGINE</span>
+  </nav>
 
-<section class="scanner panel">
-<div class="tabs"><button class="tab active">Text</button><button class="tab" disabled>Image <i>soon</i></button><button class="tab" disabled>Audio <i>soon</i></button><button class="tab" disabled>Video <i>soon</i></button></div>
-<div class="inputHead"><b>Content to analyze</b><span id="modelState" class="state">Engine standby</span></div>
-<textarea id="text" maxlength="30000" placeholder="Paste English text here. For stronger results, use at least 100 words."></textarea>
-<div class="actions"><span id="count">0 words</span><button id="demo" class="soft">Load demo</button><button id="clear" class="soft">Clear</button><button id="scan" class="cta">Run Trace DNA →</button></div>
-<div id="progress" class="progress hidden"><div><span id="bar"></span></div><small id="progressText">Preparing…</small></div>
-</section>
+  <header>
+    <span class="over">TRACE DNA™ • TEXT ENGINE V5</span>
+    <h1>Know what’s real.<br>Know what’s AI.</h1>
+    <p>Evidence-first AI text analysis using multiple local models, domain context, human counter-evidence and an abstention layer designed to reduce false accusations.</p>
+  </header>
 
-<section id="report" class="hidden">
-<div class="reportGrid">
-<div class="panel scoreCard"><span class="over">AI INVOLVEMENT</span><div class="scoreRow"><strong id="score">--</strong><div><b id="verdict">--</b><small id="confidence">--</small></div></div><div class="scale"><span id="scaleFill"></span></div><p id="explain"></p></div>
-<div class="panel dna"><span class="over">TRACE DNA™</span><div class="dnaRow"><span>Human signal</span><div><i id="humanBar"></i></div><b id="humanVal">--</b></div><div class="dnaRow"><span>AI signal</span><div><i id="aiBar"></i></div><b id="aiVal">--</b></div><div class="dnaRow"><span>Uncertainty</span><div><i id="uncertainBar"></i></div><b id="uncertainVal">--</b></div></div>
+  <section class="scanner panel">
+    <div class="tabs">
+      <button class="tab active">Text</button>
+      <button class="tab" disabled>Image <i>next</i></button>
+      <button class="tab" disabled>Audio <i>later</i></button>
+      <button class="tab" disabled>Video <i>later</i></button>
+    </div>
+
+    <div class="inputHead">
+      <b>Content to analyze</b>
+      <span id="modelState" class="state">Smart engine standby</span>
+    </div>
+
+    <textarea id="text" maxlength="40000" placeholder="Paste English text here. 150+ words is recommended."></textarea>
+
+    <div class="actions">
+      <span id="count">0 words</span>
+      <button id="demo" class="soft">Load AI demo</button>
+      <button id="clear" class="soft">Clear</button>
+      <button id="scan" class="cta">Run Smart Scan →</button>
+    </div>
+
+    <div id="progress" class="progress hidden">
+      <div><span id="bar"></span></div>
+      <small id="progressText">Preparing…</small>
+    </div>
+  </section>
+
+  <section id="report" class="hidden">
+    <div class="reportGrid">
+      <div class="panel scoreCard">
+        <span class="over">CALIBRATED AI SIGNAL</span>
+        <div class="scoreRow">
+          <strong id="score">--</strong>
+          <div>
+            <b id="verdict">--</b>
+            <small id="confidence">--</small>
+          </div>
+        </div>
+        <div class="scale"><span id="scaleFill"></span></div>
+        <p id="explain"></p>
+      </div>
+
+      <div class="panel dna">
+        <span class="over">TRACE DNA™</span>
+        <div class="dnaRow"><span>Human evidence</span><div><i id="humanBar"></i></div><b id="humanVal">--</b></div>
+        <div class="dnaRow"><span>AI evidence</span><div><i id="aiBar"></i></div><b id="aiVal">--</b></div>
+        <div class="dnaRow"><span>Uncertainty</span><div><i id="uncertainBar"></i></div><b id="uncertainVal">--</b></div>
+      </div>
+    </div>
+
+    <div class="reportGrid lower">
+      <div class="panel">
+        <div class="sectionTitle">
+          <div>
+            <span class="over">EVIDENCE</span>
+            <h2>Why this result?</h2>
+          </div>
+          <span id="engineBadge" class="pill"></span>
+        </div>
+        <div id="evidence" class="evidence"></div>
+      </div>
+
+      <div class="panel">
+        <span class="over">DOCUMENT PROFILE</span>
+        <h2>Analysis metrics</h2>
+        <div id="metrics" class="metrics"></div>
+      </div>
+    </div>
+
+    <div class="panel segmentsPanel">
+      <span class="over">TRACE MAP</span>
+      <h2>Where does AI appear most likely?</h2>
+      <p class="sub">Chunks are analyzed with the fast detector. Mixed or unstable documents automatically reduce confidence and can trigger the third model.</p>
+      <div id="segments" class="segments"></div>
+    </div>
+
+    <div class="warning">
+      <b>Evidence, not accusation.</b> AI Trace estimates machine-generated-text signals. It does not prove authorship and should not be used alone for disciplinary, employment, legal, academic-integrity or other high-stakes decisions.
+    </div>
+  </section>
+
+  <footer>AI TRACE V5 · Smart local inference · Zero paid API</footer>
 </div>
 
-<div class="reportGrid lower">
-<div class="panel"><div class="sectionTitle"><div><span class="over">EVIDENCE</span><h2>Why this result?</h2></div><span id="engineBadge" class="pill"></span></div><div id="evidence" class="evidence"></div></div>
-<div class="panel"><span class="over">DOCUMENT PROFILE</span><h2>Analysis metrics</h2><div id="metrics" class="metrics"></div></div>
-</div>
-
-<div class="panel segmentsPanel"><span class="over">TRACE MAP</span><h2>Where does AI appear most likely?</h2><p class="sub">Each chunk is analyzed independently. Scores can vary across a mixed human/AI document.</p><div id="segments" class="segments"></div></div>
-
-<div class="warning"><b>Evidence, not accusation.</b> AI Trace estimates patterns associated with machine-generated text. A score is not proof of authorship and should not be used alone for disciplinary, employment, legal, or other high-stakes decisions.</div>
-</section>
-<footer>AI TRACE V3 · Zero-paid-API architecture · Text Beta</footer>
-</div><script type="module" src="app.js"></script></body></html>
+<script type="module" src="app.js"></script>
+</body>
+</html>

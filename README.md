@@ -1,15 +1,30 @@
-# AI Trace — MVP
+# AI Trace V2
 
-Πρώτο δωρεάν MVP του AI Trace.
+## €0 architecture
+- GitHub Pages
+- Transformers.js
+- ONNX model in the browser
+- No paid API
+- Browser cache
+- Heuristic fallback
 
-## Τι κάνει
-- Δέχεται κείμενο
-- Εκτελεί client-side ανάλυση χωρίς API
-- Υπολογίζει ενδεικτικό AI Involvement Score
-- Εμφανίζει τα signals που επηρέασαν το αποτέλεσμα
+## Model
+`onnx-community/tmr-ai-text-detector-ONNX`
 
-## Σημαντικό
-Αυτό είναι proof-of-concept, όχι επιστημονικά επικυρωμένος detector. Το επόμενο στάδιο είναι να αντικαταστήσουμε/ενισχύσουμε τα heuristics με πραγματικά ML models και calibration/evaluation dataset.
+## Deploy
+Replace these files in the repository root:
+- index.html
+- style.css
+- app.js
+- README.md
 
-## Δωρεάν deployment
-Μπορεί να φιλοξενηθεί ως static site σε GitHub Pages ή Cloudflare Pages.
+Commit to main and GitHub Pages redeploys automatically.
+
+## Important
+The score is an estimate, not proof of authorship.
+
+## Next
+- Multilingual detector, especially Greek
+- Calibration benchmark
+- Ensemble models
+- Image AI detection

@@ -3,53 +3,69 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AI Trace — AI Involvement Scanner</title>
+  <meta name="theme-color" content="#07111f">
+  <title>AI Trace V2 — AI Text Detector</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="app">
-    <header>
-      <div class="brand"><span class="logo">AI</span><div><h1>AI Trace</h1><p>AI Involvement Scanner</p></div></div>
-      <span class="badge">MVP • €0</span>
-    </header>
+<main class="app">
+<header>
+  <div class="brand"><span class="logo">AI</span><div><h1>AI Trace</h1><p>Local AI Text Analysis</p></div></div>
+  <span class="badge">V2 • €0</span>
+</header>
 
-    <section class="hero">
-      <h2>Βρες ενδείξεις συμμετοχής AI.</h2>
-      <p>Κάνε επικόλληση κειμένου και πάρε μια ενδεικτική ανάλυση. Δεν αποτελεί απόδειξη 100%.</p>
-    </section>
+<section class="hero">
+  <span class="kicker">PRIVATE • LOCAL • FREE</span>
+  <h2>Εντόπισε ενδείξεις AI χωρίς paid API.</h2>
+  <p>Το AI Trace V2 συνδυάζει browser-side Machine Learning με γλωσσικά signals και ανάλυση ανά τμήμα.</p>
+</section>
 
-    <section class="card">
-      <label for="text">Κείμενο προς ανάλυση</label>
-      <textarea id="text" maxlength="20000" placeholder="Κάνε paste εδώ το κείμενο..."></textarea>
-      <div class="toolbar">
-        <span id="counter">0 χαρακτήρες</span>
-        <button id="clear" class="secondary">Καθαρισμός</button>
-        <button id="scan" class="primary">Ανάλυση AI →</button>
-      </div>
-    </section>
+<section class="card">
+  <div class="labelRow">
+    <label for="text">Κείμενο προς ανάλυση</label>
+    <span id="modelState" class="status">Model: δεν έχει φορτωθεί</span>
+  </div>
+  <textarea id="text" maxlength="30000" placeholder="Κάνε paste εδώ το κείμενο..."></textarea>
+  <div class="toolbar">
+    <span id="counter">0 λέξεις • 0 χαρακτήρες</span>
+    <button id="demo" class="ghost">Demo</button>
+    <button id="clear" class="secondary">Καθαρισμός</button>
+    <button id="scan" class="primary">Ανάλυση AI →</button>
+  </div>
+  <div id="progressWrap" class="progressWrap hidden">
+    <div class="progress"><div id="progressBar"></div></div>
+    <span id="progressText">Προετοιμασία...</span>
+  </div>
+</section>
 
-    <section id="result" class="card hidden">
-      <div class="resultTop">
-        <div>
-          <span class="eyebrow">AI INVOLVEMENT SCORE</span>
-          <div class="scoreLine"><strong id="score">0%</strong><span id="verdict"></span></div>
-        </div>
-        <div class="ring" id="ring"><span id="ringScore">0%</span></div>
-      </div>
+<section id="result" class="card hidden">
+  <div class="resultTop">
+    <div>
+      <span class="eyebrow">AI INVOLVEMENT SCORE</span>
+      <div class="scoreLine"><strong id="score">0%</strong><span id="verdict"></span></div>
+      <p id="engine" class="engine"></p>
+    </div>
+    <div class="ring" id="ring"><span id="ringScore">0%</span></div>
+  </div>
+  <div class="meter"><div id="meterFill"></div></div>
+  <p id="summary" class="summary"></p>
 
-      <div class="meter"><div id="meterFill"></div></div>
-      <p id="summary" class="summary"></p>
+  <div class="grid2">
+    <div><h3>Signals</h3><div id="signals" class="signals"></div></div>
+    <div><h3>Μετρικές</h3><div id="metrics" class="metrics"></div></div>
+  </div>
 
-      <h3>Ενδείξεις</h3>
-      <div id="signals" class="signals"></div>
+  <h3>Ανάλυση τμημάτων</h3>
+  <p class="muted">Τα μεγαλύτερα τμήματα αναλύονται ξεχωριστά.</p>
+  <div id="segments" class="segments"></div>
 
-      <div class="notice">
-        <strong>Σημαντικό:</strong> Το αποτέλεσμα είναι εκτίμηση βασισμένη σε γλωσσικά μοτίβα. Κανένας detector δεν μπορεί να αποδείξει με βεβαιότητα ότι ένα κείμενο γράφτηκε από AI.
-      </div>
-    </section>
+  <div class="notice">
+    <strong>Περιορισμός:</strong> Το AI detection είναι πιθανοτική εκτίμηση, όχι απόδειξη συγγραφής. Το ML model είναι καταλληλότερο για αγγλικό κείμενο· για άλλες γλώσσες το αποτέλεσμα έχει χαμηλότερη αξιοπιστία.
+  </div>
+</section>
 
-    <footer>AI Trace • First MVP • Built to evolve</footer>
-  </main>
-  <script src="app.js"></script>
+<footer>AI Trace V2 • Browser-side ML • No paid API</footer>
+</main>
+<script type="module" src="app.js"></script>
 </body>
 </html>

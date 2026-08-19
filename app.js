@@ -3,16 +3,21 @@ import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transfo
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const MODEL = 'onnx-community/tmr-ai-text-detector-ONNX';
-let classifier = null;
+const TMR_MODEL = 'onnx-community/tmr-ai-text-detector-ONNX';
+const MODERN_MODEL = 'onnx-community/modernbert-ai-detection-raid-mage-ONNX';
+
+let tmrClassifier = null;
+let modernClassifier = null;
 
 const $ = id => document.getElementById(id);
 const text = $('text');
 
 text.oninput = () => {
-  $('count').textContent =
-    (text.value.trim() ? text.value.trim().split(/\s+/).length : 0) +
-    ' words';
+  const count = text.value.trim()
+    ? text.value.trim().split(/\s+/).length
+    : 0;
+
+  $('count').textContent = count + ' words';
 };
 
 $('clear').onclick = () => {
@@ -28,25 +33,25 @@ $('demo').onclick = () => {
 
 $('scan').onclick = run;
 
-function progress(n, t) {
+function progress(percent, label) {
   $('progress').classList.remove('hidden');
-  $('bar').style.width = n + '%';
-  $('progressText').textContent = t;
+  $('bar').style.width = percent + '%';
+  $('progressText').textContent = label;
 }
 
-function language(t) {
-  const latin = (t.match(/[A-Za-z]/g) || []).length;
-  const total = (t.match(/\p{L}/gu) || []).length;
+function detectLanguage(value) {
+  const latin = (value.match(/[A-Za-z]/g) || []).length;
+  const total = (value.match(/\p{L}/gu) || []).length;
 
   return total && latin / total > 0.8
     ? 'English'
     : 'Non-English';
 }
 
-function profile(t) {
-  const words = t.trim().split(/\s+/);
+function profile(value) {
+  const words = value.trim().split(/\s+/);
 
-  const sentences = t
+  const sentences = value
     .split(/[.!?]+/)
     .map(x => x.trim())
     .filter(Boolean);
@@ -63,27 +68,29 @@ function profile(t) {
     words.length /
     Math.max(1, sentences.length);
 
-  const lex =
+  const lexical =
     new Set(clean).size /
     Math.max(clean.length, 1);
 
-  const lens = sentences.map(
-    s => s.split(/\s+/).length
+  const lengths = sentences.map(
+    sentence => sentence.split(/\s+/).length
   );
 
   const mean =
-    lens.reduce((a, b) => a + b, 0) /
-    Math.max(1, lens.length);
+    lengths.reduce((a, b) => a + b, 0) /
+    Math.max(1, lengths.length);
 
   const variance =
-    lens.reduce(
-      (a, b) => a + (b - mean) ** 2,
+    lengths.reduce(
+      (sum, current) =>
+        sum + (current - mean) ** 2,
       0
-    ) / Math.max(1, lens.length);
+    ) /
+    Math.max(1, lengths.length);
 
   const transitions =
     (
-      t.match(
+      value.match(
         /\b(however|moreover|furthermore|therefore|overall|ultimately|consequently|in conclusion)\b/gi
       ) || []
     ).length;
@@ -92,26 +99,28 @@ function profile(t) {
     words: words.length,
     sentences: sentences.length,
     avg,
-    lex,
+    lexical,
     variance,
     transitions
   };
 }
 
-function chunks(t, max = 1450) {
+function chunkText(value, max = 1450) {
   const sentences =
-    t.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ||
-    [t];
+    value.match(
+      /[^.!?]+[.!?]+|[^.!?]+$/g
+    ) || [value];
 
-  const out = [];
+  const chunks = [];
   let current = '';
 
   for (const sentence of sentences) {
     if (
-      (current + sentence).length > max &&
+      (current + sentence).length >
+        max &&
       current
     ) {
-      out.push(current.trim());
+      chunks.push(current.trim());
       current = sentence;
     } else {
       current += sentence;
@@ -119,40 +128,61 @@ function chunks(t, max = 1450) {
   }
 
   if (current.trim()) {
-    out.push(current.trim());
+    chunks.push(current.trim());
   }
 
-  return out.slice(0, 8);
+  return chunks.slice(0, 8);
 }
 
-async function model() {
-  if (classifier) {
-    return classifier;
+async function loadTMR() {
+  if (tmrClassifier) {
+    return tmrClassifier;
   }
 
   $('modelState').textContent =
-    'Loading local ML engine…';
+    'Loading TMR engine…';
 
   progress(
-    18,
-    'Downloading model on first use…'
+    12,
+    'Loading Quick Scan model…'
   );
 
-  classifier = await pipeline(
+  tmrClassifier = await pipeline(
     'text-classification',
-    MODEL,
+    TMR_MODEL,
     {
       dtype: 'q8'
     }
   );
 
-  $('modelState').textContent =
-    'TMR engine ready ✓';
-
-  return classifier;
+  return tmrClassifier;
 }
 
-function probability(output) {
+async function loadModern() {
+  if (modernClassifier) {
+    return modernClassifier;
+  }
+
+  $('modelState').textContent =
+    'Loading Deep Scan engine…';
+
+  progress(
+    55,
+    'Loading second detector…'
+  );
+
+  modernClassifier = await pipeline(
+    'text-classification',
+    MODERN_MODEL,
+    {
+      dtype: 'q4f16'
+    }
+  );
+
+  return modernClassifier;
+}
+
+function extractAIProbability(output) {
   const results =
     (
       Array.isArray(output)
@@ -160,155 +190,104 @@ function probability(output) {
         : [output]
     ).flat();
 
-  const ai = results.find(x =>
-    /AI|LABEL_1|generated/i.test(
-      x.label
-    )
-  );
+  let ai = null;
+  let human = null;
 
-  const human = results.find(x =>
-    /human|LABEL_0/i.test(
-      x.label
-    )
-  );
+  for (const item of results) {
+    const label =
+      String(item.label || '')
+        .toLowerCase();
 
-  if (ai) {
-    return Number(ai.score);
+    const score =
+      Number(item.score) || 0;
+
+    if (
+      label.includes('ai') ||
+      label.includes('machine') ||
+      label.includes('generated') ||
+      label === 'label_1'
+    ) {
+      ai = Math.max(
+        ai ?? 0,
+        score
+      );
+    }
+
+    if (
+      label.includes('human') ||
+      label === 'label_0'
+    ) {
+      human = Math.max(
+        human ?? 0,
+        score
+      );
+    }
   }
 
-  if (human) {
-    return 1 - Number(human.score);
+  if (ai !== null) {
+    return ai;
+  }
+
+  if (human !== null) {
+    return 1 - human;
+  }
+
+  /*
+   ModernBERT documentation defines
+   probability index 1 as machine-generated.
+   */
+  if (
+    results.length >= 2
+  ) {
+    return Number(
+      results[1].score || 0.5
+    );
   }
 
   return 0.5;
 }
 
-async function run() {
-  const t = text.value.trim();
-
-  const wordCount = t
-    ? t.split(/\s+/).length
-    : 0;
-
-  if (wordCount < 80) {
-    alert(
-      'For a more meaningful result, paste at least 80 words.'
+async function classify(
+  classifier,
+  value
+) {
+  const output =
+    await classifier(
+      value,
+      {
+        top_k: null,
+        truncation: true
+      }
     );
-    return;
-  }
 
-  $('scan').disabled = true;
-
-  progress(
-    5,
-    'Building document profile…'
+  return Math.round(
+    extractAIProbability(output) *
+      100
   );
-
-  const p = profile(t);
-  const lang = language(t);
-
-  const scores = [];
-  const parts = chunks(t);
-
-  let ml = true;
-
-  try {
-    const classifierModel =
-      await model();
-
-    for (
-      let i = 0;
-      i < parts.length;
-      i++
-    ) {
-      progress(
-        35 +
-          Math.round(
-            (i / parts.length) * 45
-          ),
-        `Analyzing segment ${
-          i + 1
-        }/${parts.length}…`
-      );
-
-      const output =
-        await classifierModel(
-          parts[i],
-          {
-            top_k: null,
-            truncation: true
-          }
-        );
-
-      scores.push(
-        Math.round(
-          probability(output) * 100
-        )
-      );
-    }
-  } catch (error) {
-    console.error(error);
-
-    ml = false;
-
-    $('modelState').textContent =
-      'ML unavailable • evidence fallback';
-
-    for (let i = 0; i < parts.length; i++) {
-      scores.push(
-        heuristic(p)
-      );
-    }
-  }
-
-  const raw =
-    Math.round(
-      scores.reduce(
-        (a, b) => a + b,
-        0
-      ) / scores.length
-    );
-
-  const uncertainty =
-    calcUncertainty(
-      scores,
-      p,
-      lang,
-      ml
-    );
-
-  const confidence =
-    Math.max(
-      20,
-      100 - uncertainty
-    );
-
-  render(
-    raw,
-    confidence,
-    uncertainty,
-    p,
-    parts,
-    scores,
-    lang,
-    ml
-  );
-
-  progress(
-    100,
-    'Trace complete'
-  );
-
-  setTimeout(() => {
-    $('progress').classList.add(
-      'hidden'
-    );
-  }, 400);
-
-  $('scan').disabled = false;
 }
 
-function heuristic(p) {
+function standardDeviation(values) {
+  if (!values.length) {
+    return 0;
+  }
+
+  const mean =
+    values.reduce(
+      (a, b) => a + b,
+      0
+    ) / values.length;
+
+  return Math.sqrt(
+    values.reduce(
+      (sum, current) =>
+        sum +
+        (current - mean) ** 2,
+      0
+    ) / values.length
+  );
+}
+
+function heuristicScore(p) {
   let score = 42;
 
   if (p.variance < 35) {
@@ -332,166 +311,487 @@ function heuristic(p) {
   );
 }
 
-function calcUncertainty(
-  scores,
-  p,
-  lang,
-  ml
-) {
-  let uncertainty = 18;
-
-  if (!ml) {
-    uncertainty += 35;
-  }
-
-  if (lang !== 'English') {
-    uncertainty += 28;
-  }
-
-  if (p.words < 150) {
-    uncertainty += 15;
-  }
-
-  const mean =
-    scores.reduce(
-      (a, b) => a + b,
-      0
-    ) / scores.length;
-
-  const spread =
-    Math.sqrt(
-      scores.reduce(
-        (a, b) =>
-          a + (b - mean) ** 2,
-        0
-      ) / scores.length
+function buildConsensus({
+  tmr,
+  modern,
+  segmentScores,
+  profileData,
+  language
+}) {
+  const modelGap =
+    Math.abs(
+      tmr - modern
     );
 
-  uncertainty += Math.min(
-    20,
-    spread
-  );
+  const segmentSpread =
+    standardDeviation(
+      segmentScores
+    );
 
-  return Math.min(
-    90,
-    Math.round(uncertainty)
-  );
+  const average =
+    Math.round(
+      tmr * 0.48 +
+      modern * 0.48 +
+      heuristicScore(
+        profileData
+      ) *
+        0.04
+    );
+
+  let uncertainty = 12;
+
+  uncertainty +=
+    Math.min(
+      35,
+      modelGap * 0.65
+    );
+
+  uncertainty +=
+    Math.min(
+      25,
+      segmentSpread * 0.65
+    );
+
+  if (
+    profileData.words < 150
+  ) {
+    uncertainty += 12;
+  }
+
+  if (
+    language !== 'English'
+  ) {
+    uncertainty += 25;
+  }
+
+  uncertainty =
+    Math.min(
+      95,
+      Math.round(
+        uncertainty
+      )
+    );
+
+  const confidence =
+    Math.max(
+      5,
+      100 - uncertainty
+    );
+
+  const strongDisagreement =
+    modelGap >= 35;
+
+  const unstableSegments =
+    segmentSpread >= 28;
+
+  let verdict;
+
+  if (
+    strongDisagreement ||
+    unstableSegments
+  ) {
+    verdict =
+      'INCONCLUSIVE';
+  } else if (
+    average >= 85
+  ) {
+    verdict =
+      'Strong AI evidence';
+  } else if (
+    average >= 65
+  ) {
+    verdict =
+      'Likely AI';
+  } else if (
+    average <= 15
+  ) {
+    verdict =
+      'Strong human evidence';
+  } else if (
+    average <= 35
+  ) {
+    verdict =
+      'Likely human';
+  } else {
+    verdict =
+      'INCONCLUSIVE';
+  }
+
+  return {
+    score: average,
+    uncertainty,
+    confidence,
+    modelGap,
+    segmentSpread:
+      Math.round(
+        segmentSpread
+      ),
+    verdict
+  };
 }
 
-function escapeHTML(s) {
-  return s.replace(
+async function run() {
+  const value =
+    text.value.trim();
+
+  const wordCount =
+    value
+      ? value.split(/\s+/)
+          .length
+      : 0;
+
+  if (wordCount < 80) {
+    alert(
+      'Paste at least 80 words for a meaningful analysis.'
+    );
+    return;
+  }
+
+  $('scan').disabled = true;
+
+  const documentProfile =
+    profile(value);
+
+  const language =
+    detectLanguage(value);
+
+  const chunks =
+    chunkText(value);
+
+  let tmrDocument = 50;
+  let modernDocument = 50;
+
+  const tmrSegments = [];
+
+  let tmrWorked = true;
+  let modernWorked = true;
+
+  try {
+    const tmr =
+      await loadTMR();
+
+    progress(
+      20,
+      'TMR Quick Scan…'
+    );
+
+    tmrDocument =
+      await classify(
+        tmr,
+        value
+      );
+
+    for (
+      let i = 0;
+      i < chunks.length;
+      i++
+    ) {
+      progress(
+        25 +
+          Math.round(
+            (i /
+              chunks.length) *
+              25
+          ),
+        `TMR segment ${
+          i + 1
+        }/${chunks.length}`
+      );
+
+      tmrSegments.push(
+        await classify(
+          tmr,
+          chunks[i]
+        )
+      );
+    }
+  } catch (error) {
+    console.error(
+      'TMR error',
+      error
+    );
+
+    tmrWorked = false;
+
+    tmrDocument =
+      heuristicScore(
+        documentProfile
+      );
+
+    for (
+      let i = 0;
+      i < chunks.length;
+      i++
+    ) {
+      tmrSegments.push(
+        tmrDocument
+      );
+    }
+  }
+
+  /*
+   Deep Scan:
+   load the second detector only after
+   the fast model has finished.
+  */
+
+  try {
+    const modern =
+      await loadModern();
+
+    progress(
+      72,
+      'ModernBERT Deep Scan…'
+    );
+
+    modernDocument =
+      await classify(
+        modern,
+        value
+      );
+  } catch (error) {
+    console.error(
+      'ModernBERT error',
+      error
+    );
+
+    modernWorked = false;
+
+    modernDocument =
+      tmrDocument;
+  }
+
+  progress(
+    88,
+    'Building consensus…'
+  );
+
+  let consensus;
+
+  if (
+    tmrWorked &&
+    modernWorked
+  ) {
+    consensus =
+      buildConsensus({
+        tmr:
+          tmrDocument,
+        modern:
+          modernDocument,
+        segmentScores:
+          tmrSegments,
+        profileData:
+          documentProfile,
+        language
+      });
+  } else {
+    /*
+     If only one model works,
+     confidence is intentionally capped.
+    */
+
+    const spread =
+      Math.round(
+        standardDeviation(
+          tmrSegments
+        )
+      );
+
+    const fallbackScore =
+      tmrWorked
+        ? tmrDocument
+        : heuristicScore(
+            documentProfile
+          );
+
+    consensus = {
+      score:
+        fallbackScore,
+      uncertainty:
+        Math.max(
+          50,
+          spread
+        ),
+      confidence:
+        Math.min(
+          50,
+          100 - spread
+        ),
+      modelGap: 0,
+      segmentSpread:
+        spread,
+      verdict:
+        'INCONCLUSIVE'
+    };
+  }
+
+  renderV4({
+    consensus,
+    documentProfile,
+    chunks,
+    segmentScores:
+      tmrSegments,
+    language,
+    tmrDocument,
+    modernDocument,
+    tmrWorked,
+    modernWorked
+  });
+
+  progress(
+    100,
+    'Consensus complete'
+  );
+
+  $('modelState').textContent =
+    tmrWorked &&
+    modernWorked
+      ? 'V4 consensus engine ready ✓'
+      : 'Limited evidence mode';
+
+  setTimeout(() => {
+    $('progress')
+      .classList.add(
+        'hidden'
+      );
+  }, 500);
+
+  $('scan').disabled = false;
+}
+
+function escapeHTML(value) {
+  return value.replace(
     /[&<>"']/g,
-    c =>
+    character =>
       ({
         '&': '&amp;',
         '<': '&lt;',
         '>': '&gt;',
         '"': '&quot;',
         "'": '&#039;'
-      }[c])
+      }[character])
   );
 }
 
-function render(
-  score,
-  confidence,
-  uncertainty,
-  p,
-  parts,
-  scores,
-  lang,
-  ml
-) {
-  $('report').classList.remove(
-    'hidden'
-  );
+function renderV4({
+  consensus,
+  documentProfile,
+  chunks,
+  segmentScores,
+  language,
+  tmrDocument,
+  modernDocument,
+  tmrWorked,
+  modernWorked
+}) {
+  $('report')
+    .classList.remove(
+      'hidden'
+    );
 
   $('score').textContent =
-    score + '%';
+    consensus.score + '%';
 
   $('scaleFill').style.width =
-    score + '%';
+    consensus.score + '%';
 
   $('verdict').textContent =
-    score >= 75
-      ? 'Strong AI signal'
-      : score >= 55
-      ? 'Moderate AI signal'
-      : score >= 35
-      ? 'Mixed / uncertain'
-      : 'Low AI signal';
+    consensus.verdict;
 
   $('confidence').textContent =
     `Confidence: ${
-      confidence >= 70
+      consensus.confidence >= 70
         ? 'High'
-        : confidence >= 45
+        : consensus.confidence >= 45
         ? 'Medium'
         : 'Low'
-    } (${confidence}%)`;
+    } (${consensus.confidence}%)`;
 
-  $('explain').textContent =
-    lang === 'English' && ml
-      ? 'Score is driven primarily by the RAID-trained TMR classifier, with uncertainty adjusted for document length and segment disagreement.'
-      : 'This content is outside the strongest validated path; interpret the result cautiously.';
+  if (
+    consensus.verdict ===
+    'INCONCLUSIVE'
+  ) {
+    $('explain').textContent =
+      `Conflicting or unstable evidence detected. Model disagreement: ${consensus.modelGap} points. Segment instability: ${consensus.segmentSpread}. AI Trace will not force an AI/Human verdict when the evidence is inconsistent.`;
+  } else {
+    $('explain').textContent =
+      `Two independent detection signals were combined. TMR: ${tmrDocument}% AI. ModernBERT: ${modernDocument}% AI. Model disagreement: ${consensus.modelGap} points.`;
+  }
 
   const human =
-    100 - score;
+    100 -
+    consensus.score;
 
   $('humanVal').textContent =
     human + '%';
 
   $('aiVal').textContent =
-    score + '%';
+    consensus.score + '%';
 
   $('uncertainVal').textContent =
-    uncertainty + '%';
+    consensus.uncertainty +
+    '%';
 
   $('humanBar').style.width =
     human + '%';
 
   $('aiBar').style.width =
-    score + '%';
+    consensus.score + '%';
 
   $('uncertainBar').style.width =
-    uncertainty + '%';
+    consensus.uncertainty +
+    '%';
 
   $('engineBadge').textContent =
-    ml
-      ? 'TMR • ONNX'
-      : 'FALLBACK';
+    tmrWorked &&
+    modernWorked
+      ? 'V4 • 2-MODEL CONSENSUS'
+      : 'LIMITED EVIDENCE';
 
   const evidence = [
     [
-      'ML classifier',
-      ml
-        ? `${score}% aggregate machine-generated-text signal across ${scores.length} segment(s).`
-        : 'Model unavailable; result uses fallback signals.',
-      ml
-        ? 'Primary'
-        : 'Fallback'
+      'TMR detector',
+      tmrWorked
+        ? `${tmrDocument}% AI signal`
+        : 'Unavailable',
+      tmrWorked
+        ? 'Model A'
+        : 'Error'
     ],
+
     [
-      'Segment agreement',
-      `${
-        Math.max(...scores) -
-        Math.min(...scores)
-      } point range between analyzed chunks. Lower spread generally increases confidence.`,
-      'Evidence'
+      'ModernBERT detector',
+      modernWorked
+        ? `${modernDocument}% AI signal`
+        : 'Unavailable',
+      modernWorked
+        ? 'Model B'
+        : 'Error'
     ],
+
+    [
+      'Model disagreement',
+      `${consensus.modelGap} percentage points`,
+      consensus.modelGap >= 35
+        ? 'High conflict'
+        : 'Acceptable'
+    ],
+
+    [
+      'Segment stability',
+      `Spread score: ${consensus.segmentSpread}`,
+      consensus.segmentSpread >=
+      28
+        ? 'Unstable'
+        : 'Stable'
+    ],
+
     [
       'Language fit',
-      lang === 'English'
-        ? 'English detected — matches the detector’s primary training language.'
-        : 'Non-English detected — detector reliability is reduced.',
+      language === 'English'
+        ? 'English detected — strongest supported path.'
+        : 'Non-English detected — reliability is reduced.',
       'Context'
-    ],
-    [
-      'Structural consistency',
-      p.variance < 35
-        ? 'Sentence lengths are relatively consistent.'
-        : 'Sentence lengths show substantial variation.',
-      'Supporting'
     ]
   ];
 
@@ -511,17 +811,40 @@ function render(
       .join('');
 
   const metrics = {
-    Words: p.words,
-    Sentences: p.sentences,
+    Words:
+      documentProfile.words,
+
+    Sentences:
+      documentProfile.sentences,
+
     'Avg. words / sentence':
-      p.avg.toFixed(1),
+      documentProfile.avg.toFixed(
+        1
+      ),
+
     'Lexical diversity':
       Math.round(
-        p.lex * 100
+        documentProfile.lexical *
+          100
       ) + '%',
-    Language: lang,
-    'Segments analyzed':
-      scores.length
+
+    Language:
+      language,
+
+    'Models active':
+      `${Number(
+        tmrWorked
+      ) +
+        Number(
+          modernWorked
+        )}/2`,
+
+    'Model disagreement':
+      consensus.modelGap +
+      ' pts',
+
+    'Segment instability':
+      consensus.segmentSpread
   };
 
   $('metrics').innerHTML =
@@ -537,25 +860,48 @@ function render(
       .join('');
 
   $('segments').innerHTML =
-    parts
+    chunks
       .map(
-        (part, i) => `
+        (
+          chunk,
+          index
+        ) => `
         <div class="segment">
           <div class="segmentHead">
-            <b>Segment ${i + 1}</b>
-            <span>${scores[i]}% AI signal</span>
+            <b>Segment ${
+              index + 1
+            }</b>
+
+            <span>
+              ${
+                segmentScores[
+                  index
+                ]
+              }% TMR signal
+            </span>
           </div>
 
           <div class="segmentMeter">
-            <i style="width:${scores[i]}%"></i>
+            <i
+              style="width:${
+                segmentScores[
+                  index
+                ]
+              }%"
+            ></i>
           </div>
 
           <p>
             ${escapeHTML(
-              part.slice(0, 300)
+              chunk.slice(
+                0,
+                300
+              )
             )}
+
             ${
-              part.length > 300
+              chunk.length >
+              300
                 ? '…'
                 : ''
             }
@@ -564,6 +910,63 @@ function render(
       `
       )
       .join('');
+
+  /*
+   Local benchmark log.
+   No server / no paid database.
+  */
+
+  try {
+    const history =
+      JSON.parse(
+        localStorage.getItem(
+          'aiTraceBenchmarks'
+        ) || '[]'
+      );
+
+    history.push({
+      date:
+        new Date().toISOString(),
+
+      words:
+        documentProfile.words,
+
+      language,
+
+      tmr:
+        tmrDocument,
+
+      modern:
+        modernDocument,
+
+      score:
+        consensus.score,
+
+      verdict:
+        consensus.verdict,
+
+      confidence:
+        consensus.confidence,
+
+      modelGap:
+        consensus.modelGap,
+
+      segmentSpread:
+        consensus.segmentSpread
+    });
+
+    localStorage.setItem(
+      'aiTraceBenchmarks',
+      JSON.stringify(
+        history.slice(-100)
+      )
+    );
+  } catch (error) {
+    console.warn(
+      'Benchmark logging unavailable',
+      error
+    );
+  }
 
   $('report').scrollIntoView({
     behavior: 'smooth',

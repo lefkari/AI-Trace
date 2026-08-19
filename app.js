@@ -1,15 +1,14 @@
 /*
-  AI TRACE V4.1
-  Detection + Consensus + Benchmark Engine
-
-  One-file build.
-  No benchmark.js dependency required.
+  AI TRACE V4.2
+  Robust Consensus + Calibration + Benchmark Engine
+  Replace the entire app.js with this file.
 */
 
 import {
   pipeline,
   env
 } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+
 
 /* =========================================================
    CONFIG
@@ -18,7 +17,7 @@ import {
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const APP_VERSION = '4.1';
+const APP_VERSION = '4.2';
 
 const TMR_MODEL =
   'onnx-community/tmr-ai-text-detector-ONNX';
@@ -27,13 +26,23 @@ const MODERN_MODEL =
   'onnx-community/modernbert-ai-detection-raid-mage-ONNX';
 
 const BENCHMARK_STORAGE =
+  'aiTraceBenchmarkV42';
+
+const LEGACY_BENCHMARK_STORAGE =
   'aiTraceBenchmarkV41';
 
 const SCAN_HISTORY_STORAGE =
-  'aiTraceScanHistoryV41';
+  'aiTraceScanHistoryV42';
+
+const MIN_WORDS = 80;
+
+const MIN_CALIBRATION_SAMPLES = 12;
+
+const MIN_BIN_SAMPLES = 4;
 
 let tmrClassifier = null;
 let modernClassifier = null;
+
 
 /* =========================================================
    DOM
@@ -44,6 +53,23 @@ const $ = id =>
 
 const text = $('text');
 
+
+/* =========================================================
+   UPDATE OLD LABEL
+========================================================= */
+
+const scoreLabel =
+  document.querySelector(
+    '.scoreCard .over'
+  );
+
+if (scoreLabel) {
+
+  scoreLabel.textContent =
+    'AI DETECTION SIGNAL';
+}
+
+
 /* =========================================================
    BASIC UI
 ========================================================= */
@@ -52,12 +78,16 @@ text.oninput = () => {
 
   const words =
     text.value.trim()
-      ? text.value.trim().split(/\s+/).length
+      ? text.value
+          .trim()
+          .split(/\s+/)
+          .length
       : 0;
 
   $('count').textContent =
     `${words} words`;
 };
+
 
 $('clear').onclick = () => {
 
@@ -69,6 +99,7 @@ $('clear').onclick = () => {
     .classList
     .add('hidden');
 };
+
 
 $('demo').onclick = () => {
 
@@ -84,7 +115,9 @@ The future will therefore require more than simply developing increasingly power
   text.oninput();
 };
 
+
 $('scan').onclick = run;
+
 
 /* =========================================================
    PROGRESS
@@ -102,18 +135,21 @@ function progress(
   $('bar')
     .style
     .width =
-      percent + '%';
+      `${percent}%`;
 
   $('progressText')
     .textContent =
       label;
 }
 
+
 /* =========================================================
-   LANGUAGE DETECTION
+   LANGUAGE
 ========================================================= */
 
-function detectLanguage(value) {
+function detectLanguage(
+  value
+) {
 
   const latin =
     (
@@ -130,6 +166,7 @@ function detectLanguage(value) {
     ).length;
 
   if (!totalLetters) {
+
     return 'Unknown';
   }
 
@@ -141,11 +178,14 @@ function detectLanguage(value) {
     : 'Non-English';
 }
 
+
 /* =========================================================
    DOCUMENT PROFILE
 ========================================================= */
 
-function createProfile(value) {
+function createProfile(
+  value
+) {
 
   const words =
     value
@@ -256,6 +296,7 @@ function createProfile(value) {
   };
 }
 
+
 /* =========================================================
    CHUNKING
 ========================================================= */
@@ -319,6 +360,7 @@ function chunkText(
     );
 }
 
+
 /* =========================================================
    MODEL LOADERS
 ========================================================= */
@@ -353,6 +395,7 @@ async function loadTMR() {
   return tmrClassifier;
 }
 
+
 async function loadModernBERT() {
 
   if (
@@ -376,13 +419,13 @@ async function loadModernBERT() {
       'text-classification',
       MODERN_MODEL,
       {
-        dtype:
-          'q4f16'
+        dtype: 'q4f16'
       }
     );
 
   return modernClassifier;
 }
+
 
 /* =========================================================
    MODEL OUTPUT
@@ -488,6 +531,7 @@ function extractAIProbability(
   return 0.5;
 }
 
+
 async function classify(
   classifier,
   value
@@ -509,6 +553,7 @@ async function classify(
     100
   );
 }
+
 
 /* =========================================================
    STATISTICS
@@ -535,6 +580,51 @@ function mean(
   );
 }
 
+
+function median(
+  values
+) {
+
+  if (
+    !values.length
+  ) {
+
+    return 0;
+  }
+
+  const sorted =
+    [...values]
+      .sort(
+        (a, b) =>
+          a - b
+      );
+
+  const middle =
+    Math.floor(
+      sorted.length /
+      2
+    );
+
+  if (
+    sorted.length % 2
+  ) {
+
+    return sorted[
+      middle
+    ];
+  }
+
+  return (
+    sorted[
+      middle - 1
+    ] +
+    sorted[
+      middle
+    ]
+  ) / 2;
+}
+
+
 function standardDeviation(
   values
 ) {
@@ -547,7 +637,9 @@ function standardDeviation(
   }
 
   const average =
-    mean(values);
+    mean(
+      values
+    );
 
   return Math.sqrt(
     mean(
@@ -561,6 +653,23 @@ function standardDeviation(
     )
   );
 }
+
+
+function clamp(
+  value,
+  min = 0,
+  max = 100
+) {
+
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      value
+    )
+  );
+}
+
 
 /* =========================================================
    SUPPORTING HEURISTIC
@@ -610,8 +719,299 @@ function heuristicScore(
   );
 }
 
+
 /* =========================================================
-   CONSENSUS ENGINE
+   SAFE JSON
+========================================================= */
+
+function safeParse(
+  value,
+  fallback = []
+) {
+
+  try {
+
+    return JSON.parse(
+      value
+    );
+
+  } catch {
+
+    return fallback;
+  }
+}
+
+
+/* =========================================================
+   MIGRATE V4.1 BENCHMARK
+========================================================= */
+
+function migrateLegacyBenchmark() {
+
+  const current =
+    localStorage.getItem(
+      BENCHMARK_STORAGE
+    );
+
+  if (
+    current
+  ) {
+
+    return;
+  }
+
+  const legacy =
+    localStorage.getItem(
+      LEGACY_BENCHMARK_STORAGE
+    );
+
+  if (
+    !legacy
+  ) {
+
+    return;
+  }
+
+  const records =
+    safeParse(
+      legacy,
+      []
+    );
+
+  localStorage.setItem(
+    BENCHMARK_STORAGE,
+    JSON.stringify(
+      records.map(
+        record => ({
+          ...record,
+          migratedFrom:
+            '4.1'
+        })
+      )
+    )
+  );
+}
+
+
+migrateLegacyBenchmark();
+
+
+/* =========================================================
+   BENCHMARK STORAGE
+========================================================= */
+
+function loadBenchmark() {
+
+  return safeParse(
+    localStorage.getItem(
+      BENCHMARK_STORAGE
+    ) || '[]',
+    []
+  );
+}
+
+
+function saveBenchmark(
+  records
+) {
+
+  try {
+
+    localStorage.setItem(
+      BENCHMARK_STORAGE,
+      JSON.stringify(
+        records
+      )
+    );
+
+  } catch (
+    error
+  ) {
+
+    console.warn(
+      'Benchmark save failed',
+      error
+    );
+  }
+}
+
+
+function nextBenchmarkID(
+  truth,
+  records
+) {
+
+  const prefix =
+    truth === 'AI'
+      ? 'A'
+      : 'H';
+
+  const count =
+    records.filter(
+      record =>
+        record
+          .groundTruth ===
+        truth
+    ).length + 1;
+
+  return (
+    prefix +
+    '-' +
+    String(
+      count
+    ).padStart(
+      3,
+      '0'
+    )
+  );
+}
+
+
+/* =========================================================
+   CALIBRATION DATA
+========================================================= */
+
+function calibrationRecords() {
+
+  return loadBenchmark()
+    .filter(
+      record =>
+        (
+          record.groundTruth ===
+            'AI' ||
+          record.groundTruth ===
+            'HUMAN'
+        ) &&
+        Number.isFinite(
+          record.rawSignal
+        )
+    );
+}
+
+
+/* =========================================================
+   LOCAL CALIBRATION
+========================================================= */
+
+function localCalibration(
+  rawSignal
+) {
+
+  const records =
+    calibrationRecords();
+
+  if (
+    records.length <
+      MIN_CALIBRATION_SAMPLES
+  ) {
+
+    return {
+
+      active:
+        false,
+
+      samples:
+        records.length,
+
+      calibrated:
+        rawSignal,
+
+      localAIRate:
+        null
+    };
+  }
+
+  const nearby =
+    records.filter(
+      record =>
+        Math.abs(
+          record.rawSignal -
+          rawSignal
+        ) <= 10
+    );
+
+  if (
+    nearby.length <
+      MIN_BIN_SAMPLES
+  ) {
+
+    return {
+
+      active:
+        false,
+
+      samples:
+        records.length,
+
+      calibrated:
+        rawSignal,
+
+      localAIRate:
+        null
+    };
+  }
+
+  const aiCount =
+    nearby.filter(
+      record =>
+        record.groundTruth ===
+          'AI'
+    ).length;
+
+  const localAIRate =
+    (
+      aiCount /
+      nearby.length
+    ) *
+    100;
+
+  /*
+    Do not allow a tiny benchmark
+    to completely override the models.
+  */
+
+  const weight =
+    Math.min(
+      0.55,
+      nearby.length /
+      30
+    );
+
+  const calibrated =
+    rawSignal *
+      (
+        1 -
+        weight
+      ) +
+    localAIRate *
+      weight;
+
+  return {
+
+    active:
+      true,
+
+    samples:
+      records.length,
+
+    nearby:
+      nearby.length,
+
+    calibrated:
+      Math.round(
+        calibrated
+      ),
+
+    localAIRate:
+      Math.round(
+        localAIRate
+      )
+  };
+}
+
+
+/* =========================================================
+   ROBUST CONSENSUS ENGINE
 ========================================================= */
 
 function buildConsensus({
@@ -658,13 +1058,24 @@ function buildConsensus({
         )
       : 0;
 
-  /*
-    Raw detector signal.
+  const segmentMedian =
+    Math.round(
+      median(
+        segmentScores
+      )
+    );
 
-    IMPORTANT:
-    This is NOT interpreted as
-    "probability that X% was AI".
-  */
+  const segmentMean =
+    Math.round(
+      mean(
+        segmentScores
+      )
+    );
+
+
+  /* =====================================================
+     RAW DETECTOR SIGNAL
+  ===================================================== */
 
   let rawSignal;
 
@@ -675,11 +1086,20 @@ function buildConsensus({
 
     rawSignal =
       Math.round(
-        tmr * 0.48 +
-        modern * 0.48 +
+
+        tmr *
+          0.43 +
+
+        modern *
+          0.43 +
+
+        segmentMedian *
+          0.10 +
+
         heuristicScore(
           profile
-        ) * 0.04
+        ) *
+          0.04
       );
 
   } else if (
@@ -687,7 +1107,19 @@ function buildConsensus({
   ) {
 
     rawSignal =
-      tmr;
+      Math.round(
+
+        tmr *
+          0.82 +
+
+        segmentMedian *
+          0.14 +
+
+        heuristicScore(
+          profile
+        ) *
+          0.04
+      );
 
   } else if (
     modernWorked
@@ -704,79 +1136,150 @@ function buildConsensus({
       );
   }
 
-  /*
-    Evidence uncertainty.
-  */
+  rawSignal =
+    clamp(
+      rawSignal
+    );
 
-  let uncertainty =
-    10;
+
+  /* =====================================================
+     MODEL AGREEMENT
+  ===================================================== */
+
+  const modelAgreement =
+    100 -
+    clamp(
+      modelGap *
+        1.8
+    );
+
+
+  /* =====================================================
+     SEGMENT STABILITY
+  ===================================================== */
+
+  const segmentStability =
+    100 -
+    clamp(
+
+      segmentDeviation *
+        1.55 +
+
+      Math.max(
+        0,
+        segmentRange -
+          45
+      ) *
+        0.45
+    );
+
+
+  /* =====================================================
+     EVIDENCE QUALITY
+  ===================================================== */
+
+  let evidenceQuality =
+
+    modelAgreement *
+      0.45 +
+
+    segmentStability *
+      0.40 +
+
+    (
+      profile.words >=
+        150
+        ? 100
+        : 65
+    ) *
+      0.10 +
+
+    (
+      language ===
+        'English'
+        ? 100
+        : 55
+    ) *
+      0.05;
+
 
   if (
     activeModels <
       2
   ) {
 
-    uncertainty +=
-      35;
+    evidenceQuality *=
+      0.60;
   }
 
-  uncertainty +=
-    Math.min(
-      30,
-      modelGap *
-        0.60
-    );
 
-  uncertainty +=
-    Math.min(
-      30,
-      segmentDeviation *
-        0.65
-    );
-
-  if (
-    profile.words <
-      150
-  ) {
-
-    uncertainty +=
-      12;
-  }
-
-  if (
-    language !==
-      'English'
-  ) {
-
-    uncertainty +=
-      25;
-  }
-
-  uncertainty =
-    Math.min(
-      95,
+  evidenceQuality =
+    clamp(
       Math.round(
-        uncertainty
+        evidenceQuality
       )
     );
 
-  const confidence =
-    Math.max(
-      5,
-      100 -
-      uncertainty
+
+  /* =====================================================
+     BENCHMARK CALIBRATION
+  ===================================================== */
+
+  const calibration =
+    localCalibration(
+      rawSignal
     );
 
-  /*
-    Verdict safeguards.
-  */
+
+  const calibratedSignal =
+    calibration.active
+      ? calibration.calibrated
+      : rawSignal;
+
+
+  /* =====================================================
+     RELIABILITY-ADJUSTED EVIDENCE INDEX
+
+     Important:
+     This is NOT "% of text written by AI".
+  ===================================================== */
+
+  const reliabilityWeight =
+    evidenceQuality /
+    100;
+
+
+  const evidenceIndex =
+    Math.round(
+
+      50 +
+
+      (
+        calibratedSignal -
+        50
+      ) *
+
+      reliabilityWeight
+    );
+
+
+  const uncertainty =
+    100 -
+    evidenceQuality;
+
+
+  const confidence =
+    evidenceQuality;
+
+
+  /* =====================================================
+     SAFETY CONDITIONS
+  ===================================================== */
 
   const modelsConflict =
-    (
-      tmrWorked &&
-      modernWorked &&
-      modelGap >= 35
-    );
+    modelGap >=
+      35;
+
 
   const segmentsHighlyUnstable =
     (
@@ -786,32 +1289,45 @@ function buildConsensus({
         70
     );
 
+
   const limitedEvidence =
     activeModels <
       2;
 
+
+  /* =====================================================
+     VERDICT
+  ===================================================== */
+
   let verdict =
     'INCONCLUSIVE';
 
+
   if (
+    limitedEvidence ||
     modelsConflict ||
     segmentsHighlyUnstable ||
-    limitedEvidence
+    confidence <
+      55
   ) {
 
     verdict =
       'INCONCLUSIVE';
 
   } else if (
-    rawSignal >=
-      85
+    calibratedSignal >=
+      85 &&
+    confidence >=
+      75
   ) {
 
     verdict =
       'Strong AI evidence';
 
   } else if (
-    rawSignal >=
+    calibratedSignal >=
+      67 &&
+    confidence >=
       65
   ) {
 
@@ -819,30 +1335,34 @@ function buildConsensus({
       'Likely AI';
 
   } else if (
-    rawSignal <=
-      15
+    calibratedSignal <=
+      15 &&
+    confidence >=
+      75
   ) {
 
     verdict =
       'Strong human evidence';
 
   } else if (
-    rawSignal <=
-      35
+    calibratedSignal <=
+      33 &&
+    confidence >=
+      65
   ) {
 
     verdict =
       'Likely human';
-
-  } else {
-
-    verdict =
-      'INCONCLUSIVE';
   }
+
 
   return {
 
     rawSignal,
+
+    calibratedSignal,
+
+    evidenceIndex,
 
     uncertainty,
 
@@ -855,6 +1375,11 @@ function buildConsensus({
         modelGap
       ),
 
+    modelAgreement:
+      Math.round(
+        modelAgreement
+      ),
+
     segmentDeviation:
       Math.round(
         segmentDeviation
@@ -865,92 +1390,31 @@ function buildConsensus({
         segmentRange
       ),
 
+    segmentMedian,
+
+    segmentMean,
+
+    segmentStability:
+      Math.round(
+        segmentStability
+      ),
+
+    evidenceQuality,
+
     activeModels,
 
     modelsConflict,
 
-    segmentsHighlyUnstable
+    segmentsHighlyUnstable,
+
+    calibration
   };
 }
 
+
 /* =========================================================
-   BENCHMARK STORAGE
+   ADD BENCHMARK
 ========================================================= */
-
-function loadBenchmark() {
-
-  try {
-
-    const raw =
-      localStorage.getItem(
-        BENCHMARK_STORAGE
-      );
-
-    return raw
-      ? JSON.parse(
-          raw
-        )
-      : [];
-
-  } catch {
-
-    return [];
-  }
-}
-
-function saveBenchmark(
-  records
-) {
-
-  try {
-
-    localStorage.setItem(
-      BENCHMARK_STORAGE,
-      JSON.stringify(
-        records
-      )
-    );
-
-  } catch (
-    error
-  ) {
-
-    console.warn(
-      'Benchmark save failed',
-      error
-    );
-  }
-}
-
-function nextBenchmarkID(
-  truth,
-  records
-) {
-
-  const prefix =
-    truth === 'AI'
-      ? 'A'
-      : 'H';
-
-  const count =
-    records.filter(
-      record =>
-        record
-          .groundTruth ===
-        truth
-    ).length + 1;
-
-  return (
-    prefix +
-    '-' +
-    String(
-      count
-    ).padStart(
-      3,
-      '0'
-    )
-  );
-}
 
 function addBenchmark({
   groundTruth,
@@ -968,11 +1432,13 @@ function addBenchmark({
   const records =
     loadBenchmark();
 
+
   const id =
     nextBenchmarkID(
       groundTruth,
       records
     );
+
 
   records.push({
 
@@ -1011,6 +1477,12 @@ function addBenchmark({
     rawSignal:
       consensus.rawSignal,
 
+    calibratedSignal:
+      consensus.calibratedSignal,
+
+    evidenceIndex:
+      consensus.evidenceIndex,
+
     verdict:
       consensus.verdict,
 
@@ -1027,46 +1499,58 @@ function addBenchmark({
       consensus.segmentDeviation,
 
     segmentRange:
-      consensus.segmentRange
+      consensus.segmentRange,
+
+    segmentMedian:
+      consensus.segmentMedian,
+
+    segmentMean:
+      consensus.segmentMean
   });
+
 
   saveBenchmark(
     records
   );
 
+
   return id;
 }
 
-/* =========================================================
-   BASELINE BENCHMARK PREDICTION
 
-   These thresholds are evaluation
-   baselines only — not final calibration.
+/* =========================================================
+   BENCHMARK PREDICTION
 ========================================================= */
 
 function benchmarkPrediction(
   record
 ) {
 
-  const signal =
-    record.rawSignal;
-
   if (
-    signal >= 70
+    record.verdict ===
+      'Strong AI evidence' ||
+    record.verdict ===
+      'Likely AI'
   ) {
 
     return 'AI';
   }
 
+
   if (
-    signal <= 30
+    record.verdict ===
+      'Strong human evidence' ||
+    record.verdict ===
+      'Likely human'
   ) {
 
     return 'HUMAN';
   }
 
+
   return 'UNCERTAIN';
 }
+
 
 /* =========================================================
    BENCHMARK METRICS
@@ -1084,11 +1568,13 @@ function calculateBenchmarkMetrics() {
             'HUMAN'
       );
 
+
   let TP = 0;
   let TN = 0;
   let FP = 0;
   let FN = 0;
   let uncertain = 0;
+
 
   for (
     const record
@@ -1100,6 +1586,7 @@ function calculateBenchmarkMetrics() {
         record
       );
 
+
     if (
       prediction ===
         'UNCERTAIN'
@@ -1109,6 +1596,7 @@ function calculateBenchmarkMetrics() {
 
       continue;
     }
+
 
     if (
       record.groundTruth ===
@@ -1120,6 +1608,7 @@ function calculateBenchmarkMetrics() {
       TP++;
     }
 
+
     if (
       record.groundTruth ===
         'HUMAN' &&
@@ -1130,6 +1619,7 @@ function calculateBenchmarkMetrics() {
       TN++;
     }
 
+
     if (
       record.groundTruth ===
         'HUMAN' &&
@@ -1139,6 +1629,7 @@ function calculateBenchmarkMetrics() {
 
       FP++;
     }
+
 
     if (
       record.groundTruth ===
@@ -1151,11 +1642,13 @@ function calculateBenchmarkMetrics() {
     }
   }
 
+
   const decided =
     TP +
     TN +
     FP +
     FN;
+
 
   const accuracy =
     decided
@@ -1165,6 +1658,7 @@ function calculateBenchmarkMetrics() {
         ) /
         decided
       : 0;
+
 
   const precision =
     (
@@ -1178,6 +1672,7 @@ function calculateBenchmarkMetrics() {
         )
       : 0;
 
+
   const recall =
     (
       TP +
@@ -1189,6 +1684,7 @@ function calculateBenchmarkMetrics() {
           FN
         )
       : 0;
+
 
   const specificity =
     (
@@ -1202,6 +1698,7 @@ function calculateBenchmarkMetrics() {
         )
       : 0;
 
+
   const falsePositiveRate =
     (
       FP +
@@ -1213,6 +1710,7 @@ function calculateBenchmarkMetrics() {
           TN
         )
       : 0;
+
 
   const falseNegativeRate =
     (
@@ -1226,6 +1724,14 @@ function calculateBenchmarkMetrics() {
         )
       : 0;
 
+
+  const coverage =
+    records.length
+      ? decided /
+        records.length
+      : 0;
+
+
   return {
 
     total:
@@ -1235,9 +1741,18 @@ function calculateBenchmarkMetrics() {
 
     uncertain,
 
+    coverage:
+      Math.round(
+        coverage *
+        100
+      ),
+
     TP,
+
     TN,
+
     FP,
+
     FN,
 
     accuracy:
@@ -1278,6 +1793,7 @@ function calculateBenchmarkMetrics() {
   };
 }
 
+
 /* =========================================================
    CALIBRATION TABLE
 ========================================================= */
@@ -1285,16 +1801,10 @@ function calculateBenchmarkMetrics() {
 function buildCalibrationTable() {
 
   const records =
-    loadBenchmark()
-      .filter(
-        record =>
-          record.groundTruth ===
-            'AI' ||
-          record.groundTruth ===
-            'HUMAN'
-      );
+    calibrationRecords();
 
   const bins = [];
+
 
   for (
     let start = 0;
@@ -1303,7 +1813,9 @@ function buildCalibrationTable() {
   ) {
 
     const end =
-      start + 10;
+      start +
+      10;
+
 
     const samples =
       records.filter(
@@ -1319,6 +1831,7 @@ function buildCalibrationTable() {
           )
       );
 
+
     if (
       !samples.length
     ) {
@@ -1326,12 +1839,14 @@ function buildCalibrationTable() {
       continue;
     }
 
+
     const actualAI =
       samples.filter(
         sample =>
           sample.groundTruth ===
             'AI'
       ).length;
+
 
     bins.push({
 
@@ -1352,8 +1867,10 @@ function buildCalibrationTable() {
     });
   }
 
+
   return bins;
 }
+
 
 /* =========================================================
    SCAN HISTORY
@@ -1366,11 +1883,13 @@ function saveScanHistory(
   try {
 
     const history =
-      JSON.parse(
+      safeParse(
         localStorage.getItem(
           SCAN_HISTORY_STORAGE
-        ) || '[]'
+        ) || '[]',
+        []
       );
+
 
     history.push({
 
@@ -1380,6 +1899,7 @@ function saveScanHistory(
 
       ...result
     });
+
 
     localStorage.setItem(
       SCAN_HISTORY_STORAGE,
@@ -1401,6 +1921,7 @@ function saveScanHistory(
   }
 }
 
+
 /* =========================================================
    BENCHMARK PROMPT
 ========================================================= */
@@ -1409,12 +1930,6 @@ function askBenchmarkLabel(
   scanData
 ) {
 
-  /*
-    Temporary developer benchmark workflow.
-
-    Cancel or empty = skip.
-  */
-
   const answer =
     prompt(
 `AI TRACE BENCHMARK
@@ -1422,11 +1937,14 @@ function askBenchmarkLabel(
 Do you KNOW the true origin of this text?
 
 Type:
-AI      = definitely AI-generated
-HUMAN   = definitely human-written
 
-Leave empty / Cancel to skip.`
+AI = definitely AI-generated
+
+HUMAN = definitely human-written
+
+Leave empty or Cancel to skip.`
     );
+
 
   if (
     !answer
@@ -1435,10 +1953,12 @@ Leave empty / Cancel to skip.`
     return;
   }
 
+
   const truth =
     answer
       .trim()
       .toUpperCase();
+
 
   if (
     truth !== 'AI' &&
@@ -1452,6 +1972,7 @@ Leave empty / Cancel to skip.`
     return;
   }
 
+
   const source =
     prompt(
       'Source / note for this benchmark sample:',
@@ -1459,6 +1980,7 @@ Leave empty / Cancel to skip.`
         ? 'Known AI-generated sample'
         : 'Known human-written sample'
     ) || '';
+
 
   const id =
     addBenchmark({
@@ -1471,31 +1993,46 @@ Leave empty / Cancel to skip.`
       ...scanData
     });
 
+
   const metrics =
     calculateBenchmarkMetrics();
+
 
   alert(
 `Benchmark saved: ${id}
 
-Total known samples: ${metrics.total}
+Known samples: ${metrics.total}
 
-TP: ${metrics.TP}
-TN: ${metrics.TN}
-FP: ${metrics.FP}
-FN: ${metrics.FN}
+Decided: ${metrics.decided}
+
 Uncertain: ${metrics.uncertain}
 
+Coverage: ${metrics.coverage}%
+
+TP: ${metrics.TP}
+
+TN: ${metrics.TN}
+
+FP: ${metrics.FP}
+
+FN: ${metrics.FN}
+
 Accuracy*: ${metrics.accuracy}%
+
 Precision*: ${metrics.precision}%
+
 Recall*: ${metrics.recall}%
+
 Specificity*: ${metrics.specificity}%
 
 False Positive Rate*: ${metrics.falsePositiveRate}%
+
 False Negative Rate*: ${metrics.falseNegativeRate}%
 
-*These numbers are experimental until the benchmark dataset becomes much larger.`
+*Experimental until the benchmark dataset becomes much larger.`
   );
 }
+
 
 /* =========================================================
    MAIN SCAN
@@ -1506,6 +2043,7 @@ async function run() {
   const value =
     text.value.trim();
 
+
   const wordCount =
     value
       ? value
@@ -1514,68 +2052,83 @@ async function run() {
           .length
       : 0;
 
+
   if (
-    wordCount < 80
+    wordCount <
+      MIN_WORDS
   ) {
 
     alert(
-      'Paste at least 80 words for a meaningful analysis.'
+      `Paste at least ${MIN_WORDS} words for a meaningful analysis.`
     );
 
     return;
   }
 
+
   $('scan').disabled =
     true;
+
 
   progress(
     3,
     'Building document profile…'
   );
 
+
   const profile =
     createProfile(
       value
     );
+
 
   const language =
     detectLanguage(
       value
     );
 
+
   const chunks =
     chunkText(
       value
     );
 
+
   let tmrDocument =
     50;
+
 
   let modernDocument =
     50;
 
+
   let tmrWorked =
     true;
+
 
   let modernWorked =
     true;
 
+
   const tmrSegments =
     [];
 
-  /* ==============================
+
+  /* =====================================================
      TMR
-  ============================== */
+  ===================================================== */
 
   try {
 
     const tmr =
       await loadTMR();
 
+
     progress(
       20,
       'TMR Quick Scan…'
     );
+
 
     tmrDocument =
       await classify(
@@ -1583,14 +2136,18 @@ async function run() {
         value
       );
 
+
     for (
       let index = 0;
-      index < chunks.length;
+      index <
+        chunks.length;
       index++
     ) {
 
       progress(
+
         25 +
+
         Math.round(
           (
             index /
@@ -1601,14 +2158,19 @@ async function run() {
           ) *
           25
         ),
+
         `TMR segment ${index + 1}/${chunks.length}`
       );
+
 
       const score =
         await classify(
           tmr,
-          chunks[index]
+          chunks[
+            index
+          ]
         );
+
 
       tmrSegments.push(
         score
@@ -1624,17 +2186,21 @@ async function run() {
       error
     );
 
+
     tmrWorked =
       false;
+
 
     tmrDocument =
       heuristicScore(
         profile
       );
 
+
     for (
       let index = 0;
-      index < chunks.length;
+      index <
+        chunks.length;
       index++
     ) {
 
@@ -1644,19 +2210,22 @@ async function run() {
     }
   }
 
-  /* ==============================
-     MODERNBERT
-  ============================== */
+
+  /* =====================================================
+     MODERN BERT
+  ===================================================== */
 
   try {
 
     const modern =
       await loadModernBERT();
 
+
     progress(
       70,
       'ModernBERT Deep Scan…'
     );
+
 
     modernDocument =
       await classify(
@@ -1673,21 +2242,25 @@ async function run() {
       error
     );
 
+
     modernWorked =
       false;
+
 
     modernDocument =
       50;
   }
 
-  /* ==============================
-     CONSENSUS
-  ============================== */
+
+  /* =====================================================
+     CONSENSUS + CALIBRATION
+  ===================================================== */
 
   progress(
     88,
-    'Building evidence consensus…'
+    'Calibrating evidence…'
   );
+
 
   const consensus =
     buildConsensus({
@@ -1710,11 +2283,12 @@ async function run() {
       modernWorked
     });
 
-  /* ==============================
-     RENDER
-  ============================== */
 
-  renderV41({
+  /* =====================================================
+     RENDER
+  ===================================================== */
+
+  renderV42({
 
     consensus,
 
@@ -1736,9 +2310,10 @@ async function run() {
     modernWorked
   });
 
-  /* ==============================
-     LOCAL SCAN HISTORY
-  ============================== */
+
+  /* =====================================================
+     HISTORY
+  ===================================================== */
 
   saveScanHistory({
 
@@ -1759,6 +2334,12 @@ async function run() {
     rawSignal:
       consensus.rawSignal,
 
+    calibratedSignal:
+      consensus.calibratedSignal,
+
+    evidenceIndex:
+      consensus.evidenceIndex,
+
     verdict:
       consensus.verdict,
 
@@ -1775,13 +2356,23 @@ async function run() {
       consensus.segmentDeviation,
 
     segmentRange:
-      consensus.segmentRange
+      consensus.segmentRange,
+
+    segmentMedian:
+      consensus.segmentMedian,
+
+    calibrationActive:
+      consensus
+        .calibration
+        .active
   });
+
 
   progress(
     100,
     'Trace complete'
   );
+
 
   $('modelState')
     .textContent =
@@ -1789,26 +2380,31 @@ async function run() {
         tmrWorked &&
         modernWorked
       )
-        ? 'V4.1 consensus engine ready ✓'
+        ? 'V4.2 calibrated consensus ready ✓'
         : 'Limited evidence mode';
+
 
   setTimeout(
     () => {
 
       $('progress')
         .classList
-        .add('hidden');
+        .add(
+          'hidden'
+        );
 
     },
     500
   );
 
+
   $('scan').disabled =
     false;
 
-  /*
-    Temporary ground-truth collection.
-  */
+
+  /* =====================================================
+     BENCHMARK
+  ===================================================== */
 
   setTimeout(
     () => {
@@ -1840,6 +2436,7 @@ async function run() {
   );
 }
 
+
 /* =========================================================
    HTML ESCAPE
 ========================================================= */
@@ -1849,7 +2446,9 @@ function escapeHTML(
 ) {
 
   return value.replace(
+
     /[&<>"']/g,
+
     character => (
       {
         '&':
@@ -1871,11 +2470,12 @@ function escapeHTML(
   );
 }
 
+
 /* =========================================================
-   RENDER V4.1
+   RENDER V4.2
 ========================================================= */
 
-function renderV41({
+function renderV42({
   consensus,
   profile,
   chunks,
@@ -1889,44 +2489,52 @@ function renderV41({
 
   $('report')
     .classList
-    .remove('hidden');
+    .remove(
+      'hidden'
+    );
 
-  /*
-    IMPORTANT:
-    The UI still contains the old
-    "AI INVOLVEMENT" label from V3.
 
-    During final design we will rename
-    this to "AI DETECTION SIGNAL".
-  */
+  /* =====================================================
+     MAIN SCORE
+
+     This is now Evidence Index,
+     not "% written by AI".
+  ===================================================== */
 
   $('score')
     .textContent =
-      consensus.rawSignal +
-      '%';
+      `${consensus.evidenceIndex}%`;
+
 
   $('scaleFill')
     .style
     .width =
-      consensus.rawSignal +
-      '%';
+      `${consensus.evidenceIndex}%`;
+
 
   $('verdict')
     .textContent =
       consensus.verdict;
 
+
   const confidenceLabel =
     consensus.confidence >=
-      70
+      75
       ? 'High'
       : consensus.confidence >=
-          45
+          55
         ? 'Medium'
         : 'Low';
 
+
   $('confidence')
     .textContent =
-      `Confidence: ${confidenceLabel} (${consensus.confidence}%)`;
+      `Evidence confidence: ${confidenceLabel} (${consensus.confidence}%)`;
+
+
+  /* =====================================================
+     EXPLANATION
+  ===================================================== */
 
   if (
     consensus.verdict ===
@@ -1935,59 +2543,75 @@ function renderV41({
 
     $('explain')
       .textContent =
-`AI Trace detected conflicting or unstable evidence and will not force an AI/Human classification.
+`Evidence is not stable enough for a reliable AI/Human verdict.
+
+Raw detector signal: ${consensus.rawSignal}%.
+
+Reliability-adjusted evidence index: ${consensus.evidenceIndex}%.
 
 Model disagreement: ${consensus.modelGap} points.
+
 Segment deviation: ${consensus.segmentDeviation}.
+
 Segment range: ${consensus.segmentRange} points.`;
 
   } else {
 
     $('explain')
       .textContent =
-`AI Trace combined two independent detection engines.
+`AI Trace combined two detection engines, segment stability, and calibration safeguards.
 
-TMR signal: ${tmrDocument}%.
-ModernBERT signal: ${modernDocument}%.
-Model disagreement: ${consensus.modelGap} points.`;
+TMR: ${tmrDocument}%.
+
+ModernBERT: ${modernDocument}%.
+
+Raw signal: ${consensus.rawSignal}%.
+
+Reliability-adjusted index: ${consensus.evidenceIndex}%.`;
   }
+
+
+  /* =====================================================
+     TRACE DNA DISPLAY
+  ===================================================== */
 
   const humanDisplay =
     100 -
-    consensus.rawSignal;
+    consensus.evidenceIndex;
+
 
   $('humanVal')
     .textContent =
-      humanDisplay +
-      '%';
+      `${humanDisplay}%`;
+
 
   $('aiVal')
     .textContent =
-      consensus.rawSignal +
-      '%';
+      `${consensus.evidenceIndex}%`;
+
 
   $('uncertainVal')
     .textContent =
-      consensus.uncertainty +
-      '%';
+      `${consensus.uncertainty}%`;
+
 
   $('humanBar')
     .style
     .width =
-      humanDisplay +
-      '%';
+      `${humanDisplay}%`;
+
 
   $('aiBar')
     .style
     .width =
-      consensus.rawSignal +
-      '%';
+      `${consensus.evidenceIndex}%`;
+
 
   $('uncertainBar')
     .style
     .width =
-      consensus.uncertainty +
-      '%';
+      `${consensus.uncertainty}%`;
+
 
   $('engineBadge')
     .textContent =
@@ -1995,12 +2619,27 @@ Model disagreement: ${consensus.modelGap} points.`;
         tmrWorked &&
         modernWorked
       )
-        ? 'V4.1 • 2-MODEL CONSENSUS'
+        ? 'V4.2 • ROBUST CONSENSUS'
         : 'LIMITED EVIDENCE';
 
-  /* ==============================
-     EVIDENCE
-  ============================== */
+
+  /* =====================================================
+     CALIBRATION STATUS
+  ===================================================== */
+
+  const calibrationText =
+    consensus
+      .calibration
+      .active
+
+      ? `Active — ${consensus.calibration.nearby} nearby benchmark samples, empirical AI rate ${consensus.calibration.localAIRate}%`
+
+      : `Not active yet — ${consensus.calibration.samples}/${MIN_CALIBRATION_SAMPLES} known benchmark samples`;
+
+
+  /* =====================================================
+     EVIDENCE PANEL
+  ===================================================== */
 
   const evidence = [
 
@@ -2008,7 +2647,7 @@ Model disagreement: ${consensus.modelGap} points.`;
       'TMR detector',
 
       tmrWorked
-        ? `${tmrDocument}% AI detection signal`
+        ? `${tmrDocument}% raw AI signal`
         : 'Detector unavailable',
 
       tmrWorked
@@ -2016,11 +2655,12 @@ Model disagreement: ${consensus.modelGap} points.`;
         : 'Unavailable'
     ],
 
+
     [
       'ModernBERT detector',
 
       modernWorked
-        ? `${modernDocument}% AI detection signal`
+        ? `${modernDocument}% raw AI signal`
         : 'Detector unavailable',
 
       modernWorked
@@ -2028,10 +2668,11 @@ Model disagreement: ${consensus.modelGap} points.`;
         : 'Unavailable'
     ],
 
-    [
-      'Model disagreement',
 
-      `${consensus.modelGap} percentage points`,
+    [
+      'Model agreement',
+
+      `${consensus.modelAgreement}% agreement quality`,
 
       consensus.modelGap >=
         35
@@ -2039,27 +2680,40 @@ Model disagreement: ${consensus.modelGap} points.`;
         : 'Acceptable'
     ],
 
+
     [
-      'Segment deviation',
+      'Segment stability',
 
-      `${consensus.segmentDeviation}`,
+      `${consensus.segmentStability}% stability`,
 
-      consensus.segmentDeviation >=
-        28
+      consensus
+        .segmentsHighlyUnstable
         ? 'Unstable'
-        : 'Stable'
-    ],
-
-    [
-      'Segment range',
-
-      `${consensus.segmentRange} percentage points`,
-
-      consensus.segmentRange >=
-        70
-        ? 'High variation'
         : 'Acceptable'
     ],
+
+
+    [
+      'Segment median',
+
+      `${consensus.segmentMedian}% AI signal`,
+
+      'Robust signal'
+    ],
+
+
+    [
+      'Calibration',
+
+      calibrationText,
+
+      consensus
+        .calibration
+        .active
+        ? 'Active'
+        : 'Learning'
+    ],
+
 
     [
       'Language fit',
@@ -2073,25 +2727,38 @@ Model disagreement: ${consensus.modelGap} points.`;
     ]
   ];
 
+
   $('evidence')
     .innerHTML =
       evidence
         .map(
           item => `
 <div class="ev">
+
   <div class="evTop">
-    <span>${item[0]}</span>
-    <span>${item[2]}</span>
+
+    <span>
+      ${item[0]}
+    </span>
+
+    <span>
+      ${item[2]}
+    </span>
+
   </div>
 
-  <small>${item[1]}</small>
+  <small>
+    ${item[1]}
+  </small>
+
 </div>`
         )
         .join('');
 
-  /* ==============================
+
+  /* =====================================================
      METRICS
-  ============================== */
+  ===================================================== */
 
   const metrics = {
 
@@ -2104,7 +2771,9 @@ Model disagreement: ${consensus.modelGap} points.`;
     'Avg. words / sentence':
       profile
         .averageSentenceLength
-        .toFixed(1),
+        .toFixed(
+          1
+        ),
 
     'Lexical diversity':
       Math.round(
@@ -2119,15 +2788,34 @@ Model disagreement: ${consensus.modelGap} points.`;
     'Models active':
       `${consensus.activeModels}/2`,
 
+    'Raw detector signal':
+      `${consensus.rawSignal}%`,
+
+    'Evidence index':
+      `${consensus.evidenceIndex}%`,
+
+    'Evidence confidence':
+      `${consensus.confidence}%`,
+
     'Model disagreement':
       `${consensus.modelGap} pts`,
+
+    'Model agreement':
+      `${consensus.modelAgreement}%`,
+
+    'Segment stability':
+      `${consensus.segmentStability}%`,
 
     'Segment deviation':
       consensus.segmentDeviation,
 
     'Segment range':
-      `${consensus.segmentRange} pts`
+      `${consensus.segmentRange} pts`,
+
+    'Segment median':
+      `${consensus.segmentMedian}%`
   };
+
 
   $('metrics')
     .innerHTML =
@@ -2143,15 +2831,23 @@ Model disagreement: ${consensus.modelGap} points.`;
             ]
           ) => `
 <div class="metric">
-  <span>${key}</span>
-  <b>${value}</b>
+
+  <span>
+    ${key}
+  </span>
+
+  <b>
+    ${value}
+  </b>
+
 </div>`
         )
         .join('');
 
-  /* ==============================
+
+  /* =====================================================
      TRACE MAP
-  ============================== */
+  ===================================================== */
 
   $('segments')
     .innerHTML =
@@ -2166,6 +2862,7 @@ Model disagreement: ${consensus.modelGap} points.`;
               segmentScores[
                 index
               ] ?? 50;
+
 
             return `
 <div class="segment">
@@ -2182,13 +2879,18 @@ Model disagreement: ${consensus.modelGap} points.`;
 
   </div>
 
+
   <div class="segmentMeter">
 
-    <i style="width:${score}%"></i>
+    <i
+      style="width:${score}%"
+    ></i>
 
   </div>
 
+
   <p>
+
     ${escapeHTML(
       chunk.slice(
         0,
@@ -2202,6 +2904,7 @@ Model disagreement: ${consensus.modelGap} points.`;
         ? '…'
         : ''
     }
+
   </p>
 
 </div>`;
@@ -2209,8 +2912,10 @@ Model disagreement: ${consensus.modelGap} points.`;
         )
         .join('');
 
+
   $('report')
     .scrollIntoView({
+
       behavior:
         'smooth',
 
@@ -2219,16 +2924,13 @@ Model disagreement: ${consensus.modelGap} points.`;
     });
 }
 
-/* =========================================================
-   DEVELOPER / BENCHMARK UTILITIES
 
-   Available from browser console later if needed:
-   AITraceBenchmark.report()
-   AITraceBenchmark.exportJSON()
-   AITraceBenchmark.clear()
+/* =========================================================
+   BENCHMARK UTILITIES
 ========================================================= */
 
 window.AITraceBenchmark = {
+
 
   report() {
 
@@ -2248,10 +2950,12 @@ window.AITraceBenchmark = {
     };
   },
 
+
   exportJSON() {
 
     const report =
       this.report();
+
 
     const json =
       JSON.stringify(
@@ -2259,6 +2963,7 @@ window.AITraceBenchmark = {
         null,
         2
       );
+
 
     const blob =
       new Blob(
@@ -2269,28 +2974,35 @@ window.AITraceBenchmark = {
         }
       );
 
+
     const url =
       URL.createObjectURL(
         blob
       );
+
 
     const anchor =
       document.createElement(
         'a'
       );
 
+
     anchor.href =
       url;
+
 
     anchor.download =
       `AI-Trace-Benchmark-${Date.now()}.json`;
 
+
     anchor.click();
+
 
     URL.revokeObjectURL(
       url
     );
   },
+
 
   clear() {
 
@@ -2299,6 +3011,7 @@ window.AITraceBenchmark = {
         'Delete all AI Trace benchmark results stored on this device?'
       );
 
+
     if (
       !confirmation
     ) {
@@ -2306,28 +3019,25 @@ window.AITraceBenchmark = {
       return;
     }
 
+
     localStorage.removeItem(
       BENCHMARK_STORAGE
     );
+
 
     alert(
       'Benchmark data deleted.'
     );
   },
 
+
   history() {
 
-    try {
-
-      return JSON.parse(
-        localStorage.getItem(
-          SCAN_HISTORY_STORAGE
-        ) || '[]'
-      );
-
-    } catch {
-
-      return [];
-    }
+    return safeParse(
+      localStorage.getItem(
+        SCAN_HISTORY_STORAGE
+      ) || '[]',
+      []
+    );
   }
 };

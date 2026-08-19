@@ -1,23 +1,24 @@
 /*
-============================================================
- AI TRACE V4.3
- Benchmark + Calibration Research Engine
+==========================================================
+ AI TRACE V4.3.1
+ Benchmark Dashboard Build
 
- ONE FILE BUILD
+ ONE FILE REPLACEMENT
+
  - TMR detector
  - ModernBERT detector
- - 2-model consensus
- - segment stability
+ - 2-model analysis
+ - calibration
  - evidence quality
- - calibrated detection score
- - HUMAN / AI / MIXED benchmark labels
+ - segment stability
+ - HUMAN / AI / MIXED benchmark
+ - stored benchmark history
  - confusion matrix
- - false positive rate
- - false negative rate
- - precision / recall / specificity
- - local benchmark storage
+ - false-positive / false-negative rates
  - experimental threshold search
-============================================================
+ - visible BENCHMARK RESULTS button
+ - no browser console required
+==========================================================
 */
 
 import {
@@ -26,14 +27,14 @@ import {
 } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 
 
-/* =========================================================
+/* ======================================================
    CONFIG
-========================================================= */
+====================================================== */
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const VERSION = '4.3';
+const VERSION = '4.3.1';
 
 const TMR_MODEL =
   'onnx-community/tmr-ai-text-detector-ONNX';
@@ -41,6 +42,11 @@ const TMR_MODEL =
 const MODERN_MODEL =
   'onnx-community/modernbert-ai-detection-raid-mage-ONNX';
 
+/*
+ IMPORTANT:
+ Do not change this key.
+ It is the same benchmark storage used by V4.3.
+*/
 const BENCHMARK_KEY =
   'aiTraceBenchmarkV43';
 
@@ -51,9 +57,9 @@ let tmrClassifier = null;
 let modernClassifier = null;
 
 
-/* =========================================================
+/* ======================================================
    DOM
-========================================================= */
+====================================================== */
 
 const $ = id =>
   document.getElementById(id);
@@ -61,13 +67,730 @@ const $ = id =>
 const text = $('text');
 
 
-/* =========================================================
-   INPUT
-========================================================= */
+/* ======================================================
+   BENCHMARK DASHBOARD UI
+====================================================== */
+
+function installBenchmarkButton() {
+
+  if (
+    document.getElementById(
+      'benchmarkResultsBtn'
+    )
+  ) {
+    return;
+  }
+
+  const button =
+    document.createElement(
+      'button'
+    );
+
+  button.id =
+    'benchmarkResultsBtn';
+
+  button.textContent =
+    'Benchmark Results';
+
+  button.type =
+    'button';
+
+  button.style.cssText = `
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 9998;
+    border: 1px solid #354764;
+    background: #eaf1ff;
+    color: #07101e;
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 12px;
+    box-shadow: 0 10px 35px rgba(0,0,0,.35);
+    cursor: pointer;
+  `;
+
+  button.onclick =
+    showBenchmarkDashboard;
+
+  document.body.appendChild(
+    button
+  );
+}
+
+
+function installBenchmarkModal() {
+
+  if (
+    document.getElementById(
+      'benchmarkModal'
+    )
+  ) {
+    return;
+  }
+
+  const modal =
+    document.createElement(
+      'div'
+    );
+
+  modal.id =
+    'benchmarkModal';
+
+  modal.style.cssText = `
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(3,7,14,.88);
+    padding: 18px;
+    overflow-y: auto;
+    backdrop-filter: blur(8px);
+  `;
+
+  modal.innerHTML = `
+    <div
+      style="
+        max-width:760px;
+        margin:30px auto;
+        background:#0b1423;
+        color:#eef3ff;
+        border:1px solid #273650;
+        border-radius:20px;
+        padding:20px;
+        box-shadow:0 25px 80px rgba(0,0,0,.5);
+      "
+    >
+
+      <div
+        style="
+          display:flex;
+          justify-content:space-between;
+          align-items:flex-start;
+          gap:15px;
+          margin-bottom:18px;
+        "
+      >
+
+        <div>
+          <div
+            style="
+              color:#7187aa;
+              font-size:10px;
+              font-weight:800;
+              letter-spacing:.15em;
+            "
+          >
+            AI TRACE RESEARCH
+          </div>
+
+          <h2
+            style="
+              margin:6px 0 0;
+              font-size:24px;
+            "
+          >
+            Benchmark Results
+          </h2>
+
+          <div
+            style="
+              margin-top:5px;
+              color:#7c90ad;
+              font-size:12px;
+            "
+          >
+            V4.3.1 Calibration Dashboard
+          </div>
+        </div>
+
+        <button
+          id="closeBenchmarkModal"
+          style="
+            border:0;
+            background:#17253b;
+            color:#dce5f3;
+            border-radius:10px;
+            padding:9px 12px;
+            cursor:pointer;
+          "
+        >
+          Close
+        </button>
+
+      </div>
+
+      <div id="benchmarkDashboardContent"></div>
+
+    </div>
+  `;
+
+  document.body.appendChild(
+    modal
+  );
+
+  document
+    .getElementById(
+      'closeBenchmarkModal'
+    )
+    .onclick =
+      hideBenchmarkDashboard;
+
+  modal.addEventListener(
+    'click',
+    event => {
+
+      if (
+        event.target === modal
+      ) {
+        hideBenchmarkDashboard();
+      }
+    }
+  );
+}
+
+
+function showBenchmarkDashboard() {
+
+  installBenchmarkModal();
+
+  const modal =
+    document.getElementById(
+      'benchmarkModal'
+    );
+
+  const content =
+    document.getElementById(
+      'benchmarkDashboardContent'
+    );
+
+  const records =
+    loadBenchmark();
+
+  const metrics =
+    benchmarkMetrics(
+      records
+    );
+
+  const thresholds =
+    searchThresholds(
+      records
+    );
+
+  const aiCount =
+    records.filter(
+      record =>
+        record.groundTruth ===
+        'AI'
+    ).length;
+
+  const humanCount =
+    records.filter(
+      record =>
+        record.groundTruth ===
+        'HUMAN'
+    ).length;
+
+  const mixedCount =
+    records.filter(
+      record =>
+        record.groundTruth ===
+        'MIXED'
+    ).length;
+
+
+  const card = (
+    title,
+    value,
+    note = ''
+  ) => `
+    <div
+      style="
+        background:#07101c;
+        border:1px solid #1e2d45;
+        border-radius:13px;
+        padding:14px;
+      "
+    >
+      <div
+        style="
+          font-size:10px;
+          letter-spacing:.08em;
+          color:#7086a6;
+        "
+      >
+        ${title}
+      </div>
+
+      <div
+        style="
+          font-size:25px;
+          font-weight:900;
+          margin-top:5px;
+        "
+      >
+        ${value}
+      </div>
+
+      ${
+        note
+          ? `
+            <div
+              style="
+                margin-top:5px;
+                font-size:10px;
+                color:#667b99;
+              "
+            >
+              ${note}
+            </div>
+          `
+          : ''
+      }
+    </div>
+  `;
+
+
+  const qualityLabel =
+    metrics.samples < 20
+      ? 'VERY EARLY DATA'
+      : metrics.samples < 100
+        ? 'EARLY BENCHMARK'
+        : 'BENCHMARK DATA';
+
+
+  content.innerHTML = `
+
+    <div
+      style="
+        padding:13px 14px;
+        background:#101d31;
+        border:1px solid #263a58;
+        border-radius:13px;
+        color:#9db0ca;
+        line-height:1.55;
+        font-size:12px;
+        margin-bottom:16px;
+      "
+    >
+      <strong
+        style="color:#dbe5f3"
+      >
+        ${qualityLabel}
+      </strong>
+
+      <br>
+
+      These metrics are experimental.
+      A small benchmark cannot establish production accuracy.
+    </div>
+
+
+    <div
+      style="
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+      "
+    >
+
+      ${card(
+        'TOTAL RECORDS',
+        records.length
+      )}
+
+      ${card(
+        'BINARY SAMPLES',
+        metrics.samples,
+        'AI + HUMAN'
+      )}
+
+      ${card(
+        'AI',
+        aiCount
+      )}
+
+      ${card(
+        'HUMAN',
+        humanCount
+      )}
+
+      ${card(
+        'MIXED',
+        mixedCount
+      )}
+
+      ${card(
+        'UNCERTAIN',
+        metrics.uncertain
+      )}
+
+    </div>
+
+
+    <h3
+      style="
+        margin:24px 0 12px;
+      "
+    >
+      Confusion Matrix
+    </h3>
+
+
+    <div
+      style="
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+      "
+    >
+
+      ${card(
+        'TRUE POSITIVE',
+        metrics.TP,
+        'AI → AI'
+      )}
+
+      ${card(
+        'TRUE NEGATIVE',
+        metrics.TN,
+        'Human → Human'
+      )}
+
+      ${card(
+        'FALSE POSITIVE',
+        metrics.FP,
+        'Human → AI'
+      )}
+
+      ${card(
+        'FALSE NEGATIVE',
+        metrics.FN,
+        'AI → Human'
+      )}
+
+    </div>
+
+
+    <h3
+      style="
+        margin:24px 0 12px;
+      "
+    >
+      Performance
+    </h3>
+
+
+    <div
+      style="
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+      "
+    >
+
+      ${card(
+        'ACCURACY',
+        metrics.accuracy + '%'
+      )}
+
+      ${card(
+        'PRECISION',
+        metrics.precision + '%'
+      )}
+
+      ${card(
+        'RECALL',
+        metrics.recall + '%'
+      )}
+
+      ${card(
+        'SPECIFICITY',
+        metrics.specificity + '%'
+      )}
+
+      ${card(
+        'FALSE POSITIVE RATE',
+        metrics.falsePositiveRate + '%',
+        'Critical metric'
+      )}
+
+      ${card(
+        'FALSE NEGATIVE RATE',
+        metrics.falseNegativeRate + '%'
+      )}
+
+    </div>
+
+
+    <h3
+      style="
+        margin:24px 0 12px;
+      "
+    >
+      Experimental Calibration
+    </h3>
+
+
+    ${
+      thresholds
+        ? `
+          <div
+            style="
+              background:#07101c;
+              border:1px solid #1e2d45;
+              border-radius:13px;
+              padding:16px;
+              line-height:1.7;
+              font-size:13px;
+            "
+          >
+
+            Suggested HUMAN threshold:
+            <strong>
+              ≤ ${thresholds.humanThreshold}%
+            </strong>
+
+            <br>
+
+            Suggested AI threshold:
+            <strong>
+              ≥ ${thresholds.aiThreshold}%
+            </strong>
+
+            <br><br>
+
+            <span
+              style="
+                color:#7186a4;
+                font-size:11px;
+              "
+            >
+              Research-only recommendation.
+              It is not automatically applied to production classification.
+            </span>
+
+          </div>
+        `
+        : `
+          <div
+            style="
+              background:#07101c;
+              border:1px solid #1e2d45;
+              border-radius:13px;
+              padding:16px;
+              color:#8297b5;
+              font-size:12px;
+              line-height:1.6;
+            "
+          >
+            At least 10 HUMAN and 10 AI samples
+            are required before threshold search begins.
+          </div>
+        `
+    }
+
+
+    <h3
+      style="
+        margin:24px 0 12px;
+      "
+    >
+      Benchmark Records
+    </h3>
+
+
+    <div
+      style="
+        display:grid;
+        gap:8px;
+      "
+    >
+
+      ${
+        records.length
+          ? records
+              .slice()
+              .reverse()
+              .map(
+                record => `
+                  <div
+                    style="
+                      background:#07101c;
+                      border:1px solid #1e2d45;
+                      border-radius:12px;
+                      padding:12px;
+                    "
+                  >
+
+                    <div
+                      style="
+                        display:flex;
+                        justify-content:space-between;
+                        gap:10px;
+                        font-size:12px;
+                      "
+                    >
+
+                      <strong>
+                        ${record.id || 'Sample'}
+                      </strong>
+
+                      <span
+                        style="color:#91a5c2"
+                      >
+                        ${record.groundTruth}
+                      </span>
+
+                    </div>
+
+                    <div
+                      style="
+                        margin-top:6px;
+                        color:#7186a5;
+                        font-size:10px;
+                        line-height:1.5;
+                      "
+                    >
+
+                      Calibrated:
+                      ${record.calibratedScore ?? '--'}%
+
+                      · Evidence:
+                      ${record.evidenceQuality ?? '--'}%
+
+                      · TMR:
+                      ${record.tmr ?? '--'}%
+
+                      · Modern:
+                      ${record.modern ?? '--'}%
+
+                    </div>
+
+                  </div>
+                `
+              )
+              .join('')
+          : `
+            <div
+              style="
+                color:#7489a8;
+                font-size:12px;
+              "
+            >
+              No benchmark data found on this device/browser.
+            </div>
+          `
+      }
+
+    </div>
+
+
+    <div
+      style="
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-top:22px;
+      "
+    >
+
+      <button
+        id="exportBenchmarkBtn"
+        style="
+          border:0;
+          background:#eaf1ff;
+          color:#07101e;
+          padding:11px 14px;
+          border-radius:10px;
+          font-weight:800;
+          cursor:pointer;
+        "
+      >
+        Export JSON
+      </button>
+
+      <button
+        id="clearBenchmarkBtn"
+        style="
+          border:1px solid #3a2b34;
+          background:#20141a;
+          color:#d2aebc;
+          padding:11px 14px;
+          border-radius:10px;
+          font-weight:800;
+          cursor:pointer;
+        "
+      >
+        Clear Benchmark
+      </button>
+
+    </div>
+  `;
+
+
+  modal.style.display =
+    'block';
+
+
+  document
+    .getElementById(
+      'exportBenchmarkBtn'
+    )
+    .onclick =
+      exportBenchmarkJSON;
+
+
+  document
+    .getElementById(
+      'clearBenchmarkBtn'
+    )
+    .onclick = () => {
+
+      const confirmation =
+        confirm(
+          'Delete ALL benchmark results stored in this browser?'
+        );
+
+      if (
+        !confirmation
+      ) {
+        return;
+      }
+
+      localStorage.removeItem(
+        BENCHMARK_KEY
+      );
+
+      showBenchmarkDashboard();
+    };
+}
+
+
+function hideBenchmarkDashboard() {
+
+  const modal =
+    document.getElementById(
+      'benchmarkModal'
+    );
+
+  if (
+    modal
+  ) {
+    modal.style.display =
+      'none';
+  }
+}
+
+
+/* ======================================================
+   INPUT EVENTS
+====================================================== */
 
 text.oninput = () => {
 
-  const words =
+  const wordCount =
     text.value.trim()
       ? text.value
           .trim()
@@ -76,8 +799,9 @@ text.oninput = () => {
           .length
       : 0;
 
-  $('count').textContent =
-    `${words} words`;
+  $('count')
+    .textContent =
+      `${wordCount} words`;
 };
 
 
@@ -98,11 +822,9 @@ $('demo').onclick = () => {
   text.value =
 `Artificial intelligence is rapidly changing the way people work, communicate, and interact with technology. Over the past few years, AI systems have become capable of generating text, creating images, analyzing complex information, and assisting people with tasks that previously required significant amounts of human effort.
 
-One of the most important advantages of artificial intelligence is its ability to process large amounts of information quickly. Organizations can use AI-powered tools to identify patterns, automate repetitive processes, and support better decision-making.
+Organizations can use artificial intelligence to identify patterns, automate repetitive processes, and support decision-making. However, automated systems can also produce incorrect or misleading information, which means human oversight remains important.
 
-However, the growing use of artificial intelligence also creates important challenges. AI-generated information can sometimes be inaccurate, misleading, or difficult to distinguish from content created by humans.
-
-The future will therefore require more than simply developing increasingly powerful artificial intelligence systems. Society will also need technologies that provide transparency, verification, and evidence about how digital content was created or modified.`;
+As these technologies become more capable, transparency about how digital content was created or modified will become increasingly valuable. Verification systems may therefore play an important role in establishing trust across the digital environment.`;
 
   text.oninput();
 };
@@ -112,9 +834,9 @@ $('scan').onclick =
   run;
 
 
-/* =========================================================
-   UI PROGRESS
-========================================================= */
+/* ======================================================
+   PROGRESS
+====================================================== */
 
 function progress(
   percent,
@@ -136,9 +858,77 @@ function progress(
 }
 
 
-/* =========================================================
+/* ======================================================
+   HELPERS
+====================================================== */
+
+function mean(
+  values
+) {
+
+  if (
+    !values.length
+  ) {
+    return 0;
+  }
+
+  return (
+    values.reduce(
+      (a, b) =>
+        a + b,
+      0
+    ) /
+    values.length
+  );
+}
+
+
+function std(
+  values
+) {
+
+  if (
+    !values.length
+  ) {
+    return 0;
+  }
+
+  const average =
+    mean(values);
+
+  return Math.sqrt(
+    mean(
+      values.map(
+        value =>
+          (
+            value -
+            average
+          ) ** 2
+      )
+    )
+  );
+}
+
+
+function clamp(
+  value,
+  min,
+  max
+) {
+
+  return Math.max(
+    min,
+    Math.min(
+      max,
+      value
+    )
+  );
+}
+
+
+/* ======================================================
    LANGUAGE
-========================================================= */
+====================================================== */
 
 function detectLanguage(
   value
@@ -163,7 +953,8 @@ function detectLanguage(
   }
 
   return (
-    latin / total >
+    latin /
+    total >
     0.8
   )
     ? 'English'
@@ -171,9 +962,9 @@ function detectLanguage(
 }
 
 
-/* =========================================================
+/* ======================================================
    DOCUMENT PROFILE
-========================================================= */
+====================================================== */
 
 function createProfile(
   value
@@ -194,7 +985,7 @@ function createProfile(
       )
       .filter(Boolean);
 
-  const cleanWords =
+  const cleanedWords =
     words
       .map(
         word =>
@@ -216,14 +1007,14 @@ function createProfile(
 
   const lexicalDiversity =
     new Set(
-      cleanWords
+      cleanedWords
     ).size /
     Math.max(
       1,
-      cleanWords.length
+      cleanedWords.length
     );
 
-  const sentenceLengths =
+  const lengths =
     sentences.map(
       sentence =>
         sentence
@@ -233,14 +1024,12 @@ function createProfile(
     );
 
   const averageLength =
-    mean(
-      sentenceLengths
-    );
+    mean(lengths);
 
   const variance =
-    sentenceLengths.length
+    lengths.length
       ? mean(
-          sentenceLengths.map(
+          lengths.map(
             length =>
               (
                 length -
@@ -251,7 +1040,6 @@ function createProfile(
       : 0;
 
   return {
-
     words:
       words.length,
 
@@ -267,9 +1055,9 @@ function createProfile(
 }
 
 
-/* =========================================================
-   TEXT SEGMENTATION
-========================================================= */
+/* ======================================================
+   CHUNKING
+====================================================== */
 
 function chunkText(
   value,
@@ -331,86 +1119,15 @@ function chunkText(
 }
 
 
-/* =========================================================
-   STATISTICS
-========================================================= */
-
-function mean(
-  values
-) {
-
-  if (
-    !values.length
-  ) {
-
-    return 0;
-  }
-
-  return (
-    values.reduce(
-      (a, b) =>
-        a + b,
-      0
-    ) /
-    values.length
-  );
-}
-
-
-function std(
-  values
-) {
-
-  if (
-    !values.length
-  ) {
-
-    return 0;
-  }
-
-  const average =
-    mean(values);
-
-  return Math.sqrt(
-    mean(
-      values.map(
-        value =>
-          (
-            value -
-            average
-          ) ** 2
-      )
-    )
-  );
-}
-
-
-function clamp(
-  value,
-  min,
-  max
-) {
-
-  return Math.max(
-    min,
-    Math.min(
-      max,
-      value
-    )
-  );
-}
-
-
-/* =========================================================
-   MODELS
-========================================================= */
+/* ======================================================
+   MODEL LOADING
+====================================================== */
 
 async function loadTMR() {
 
   if (
     tmrClassifier
   ) {
-
     return tmrClassifier;
   }
 
@@ -428,7 +1145,8 @@ async function loadTMR() {
       'text-classification',
       TMR_MODEL,
       {
-        dtype: 'q8'
+        dtype:
+          'q8'
       }
     );
 
@@ -441,7 +1159,6 @@ async function loadModern() {
   if (
     modernClassifier
   ) {
-
     return modernClassifier;
   }
 
@@ -459,7 +1176,8 @@ async function loadModern() {
       'text-classification',
       MODERN_MODEL,
       {
-        dtype: 'q4f16'
+        dtype:
+          'q4f16'
       }
     );
 
@@ -467,9 +1185,9 @@ async function loadModern() {
 }
 
 
-/* =========================================================
-   CLASSIFIER OUTPUT
-========================================================= */
+/* ======================================================
+   MODEL OUTPUT PARSER
+====================================================== */
 
 function getAIProbability(
   output
@@ -509,7 +1227,8 @@ function getAIProbability(
       label.includes(
         'generated'
       ) ||
-      label === 'label_1'
+      label ===
+        'label_1'
     ) {
 
       ai =
@@ -520,8 +1239,10 @@ function getAIProbability(
     }
 
     if (
-      label === 'human' ||
-      label === 'label_0'
+      label ===
+        'human' ||
+      label ===
+        'label_0'
     ) {
 
       human =
@@ -535,14 +1256,12 @@ function getAIProbability(
   if (
     ai !== null
   ) {
-
     return ai;
   }
 
   if (
     human !== null
   ) {
-
     return (
       1 -
       human
@@ -556,7 +1275,7 @@ function getAIProbability(
     return Number(
       results[1]
         ?.score ??
-        0.5
+      0.5
     );
   }
 
@@ -565,12 +1284,12 @@ function getAIProbability(
 
 
 async function classify(
-  model,
+  classifier,
   value
 ) {
 
   const result =
-    await model(
+    await classifier(
       value,
       {
         top_k: null,
@@ -587,28 +1306,9 @@ async function classify(
 }
 
 
-/* =========================================================
-   RAW MODEL CONSENSUS
-========================================================= */
-
-function rawConsensus(
-  tmr,
-  modern
-) {
-
-  return Math.round(
-    (
-      tmr +
-      modern
-    ) /
-    2
-  );
-}
-
-
-/* =========================================================
+/* ======================================================
    EVIDENCE QUALITY
-========================================================= */
+====================================================== */
 
 function calculateEvidenceQuality({
   tmr,
@@ -619,20 +1319,13 @@ function calculateEvidenceQuality({
   bothModels
 }) {
 
-  /*
-    Starts at 100 and loses confidence
-    when evidence becomes unstable.
-  */
-
   let quality =
     100;
 
   if (
     !bothModels
   ) {
-
-    quality -=
-      40;
+    quality -= 40;
   }
 
   const modelGap =
@@ -673,30 +1366,22 @@ function calculateEvidenceQuality({
       : 0;
 
   if (
-    segmentRange >=
-      70
+    segmentRange >= 70
   ) {
-
-    quality -=
-      15;
+    quality -= 15;
   }
 
   if (
-    words <
-      150
+    words < 150
   ) {
-
-    quality -=
-      10;
+    quality -= 10;
   }
 
   if (
     language !==
       'English'
   ) {
-
-    quality -=
-      25;
+    quality -= 25;
   }
 
   return clamp(
@@ -709,13 +1394,9 @@ function calculateEvidenceQuality({
 }
 
 
-/* =========================================================
-   CALIBRATED DETECTION SCORE
-
-   Pulls uncertain raw detector output
-   toward neutral 50 rather than pretending
-   a noisy model score is a probability.
-========================================================= */
+/* ======================================================
+   CALIBRATION
+====================================================== */
 
 function calibrateScore(
   rawSignal,
@@ -737,9 +1418,9 @@ function calibrateScore(
 }
 
 
-/* =========================================================
+/* ======================================================
    VERDICT
-========================================================= */
+====================================================== */
 
 function verdictFor({
   calibratedScore,
@@ -748,63 +1429,45 @@ function verdictFor({
   modelGap
 }) {
 
-  /*
-    Hard safety gates.
-  */
-
   if (
-    evidenceQuality <
-      55
+    evidenceQuality < 55
   ) {
-
     return 'INCONCLUSIVE';
   }
 
   if (
-    segmentRange >=
-      70
+    segmentRange >= 70
   ) {
-
     return 'INCONCLUSIVE';
   }
 
   if (
-    modelGap >=
-      35
+    modelGap >= 35
   ) {
-
     return 'INCONCLUSIVE';
   }
 
   if (
-    calibratedScore >=
-      85
+    calibratedScore >= 85
   ) {
-
     return 'Strong AI evidence';
   }
 
   if (
-    calibratedScore >=
-      68
+    calibratedScore >= 68
   ) {
-
     return 'Likely AI';
   }
 
   if (
-    calibratedScore <=
-      15
+    calibratedScore <= 15
   ) {
-
     return 'Strong human evidence';
   }
 
   if (
-    calibratedScore <=
-      32
+    calibratedScore <= 32
   ) {
-
     return 'Likely human';
   }
 
@@ -812,9 +1475,9 @@ function verdictFor({
 }
 
 
-/* =========================================================
+/* ======================================================
    BENCHMARK STORAGE
-========================================================= */
+====================================================== */
 
 function loadBenchmark() {
 
@@ -846,33 +1509,21 @@ function saveBenchmark(
 }
 
 
-/* =========================================================
+/* ======================================================
    BENCHMARK IDS
-========================================================= */
+====================================================== */
 
 function nextID(
   truth,
   records
 ) {
 
-  let prefix;
-
-  if (
+  const prefix =
     truth === 'AI'
-  ) {
-
-    prefix = 'A';
-
-  } else if (
-    truth === 'HUMAN'
-  ) {
-
-    prefix = 'H';
-
-  } else {
-
-    prefix = 'M';
-  }
+      ? 'A'
+      : truth === 'HUMAN'
+        ? 'H'
+        : 'M';
 
   const count =
     records.filter(
@@ -895,9 +1546,9 @@ function nextID(
 }
 
 
-/* =========================================================
+/* ======================================================
    BENCHMARK PREDICTION
-========================================================= */
+====================================================== */
 
 function benchmarkPrediction(
   record,
@@ -907,11 +1558,15 @@ function benchmarkPrediction(
 
   if (
     record.evidenceQuality <
-      55 ||
+      55
+  ) {
+    return 'UNCERTAIN';
+  }
+
+  if (
     record.segmentRange >=
       70
   ) {
-
     return 'UNCERTAIN';
   }
 
@@ -919,7 +1574,6 @@ function benchmarkPrediction(
     record.calibratedScore >=
       aiThreshold
   ) {
-
     return 'AI';
   }
 
@@ -927,7 +1581,6 @@ function benchmarkPrediction(
     record.calibratedScore <=
       humanThreshold
   ) {
-
     return 'HUMAN';
   }
 
@@ -935,9 +1588,9 @@ function benchmarkPrediction(
 }
 
 
-/* =========================================================
+/* ======================================================
    BENCHMARK METRICS
-========================================================= */
+====================================================== */
 
 function benchmarkMetrics(
   records,
@@ -978,7 +1631,6 @@ function benchmarkMetrics(
     ) {
 
       uncertain++;
-
       continue;
     }
 
@@ -988,7 +1640,6 @@ function benchmarkMetrics(
       prediction ===
         'AI'
     ) {
-
       TP++;
     }
 
@@ -998,7 +1649,6 @@ function benchmarkMetrics(
       prediction ===
         'HUMAN'
     ) {
-
       TN++;
     }
 
@@ -1008,7 +1658,6 @@ function benchmarkMetrics(
       prediction ===
         'AI'
     ) {
-
       FP++;
     }
 
@@ -1018,7 +1667,6 @@ function benchmarkMetrics(
       prediction ===
         'HUMAN'
     ) {
-
       FN++;
     }
   }
@@ -1114,44 +1762,46 @@ function benchmarkMetrics(
 
     accuracy:
       Math.round(
-        accuracy * 100
+        accuracy *
+        100
       ),
 
     precision:
       Math.round(
-        precision * 100
+        precision *
+        100
       ),
 
     recall:
       Math.round(
-        recall * 100
+        recall *
+        100
       ),
 
     specificity:
       Math.round(
-        specificity * 100
+        specificity *
+        100
       ),
 
     falsePositiveRate:
       Math.round(
-        fpr * 100
+        fpr *
+        100
       ),
 
     falseNegativeRate:
       Math.round(
-        fnr * 100
+        fnr *
+        100
       )
   };
 }
 
 
-/* =========================================================
-   EXPERIMENTAL THRESHOLD SEARCH
-
-   Does NOT affect production verdict yet.
-   We only use this after collecting enough
-   HUMAN + AI benchmark samples.
-========================================================= */
+/* ======================================================
+   THRESHOLD SEARCH
+====================================================== */
 
 function searchThresholds(
   records
@@ -1175,7 +1825,6 @@ function searchThresholds(
     humans < 10 ||
     ais < 10
   ) {
-
     return null;
   }
 
@@ -1197,7 +1846,6 @@ function searchThresholds(
         humanThreshold >=
         aiThreshold
       ) {
-
         continue;
       }
 
@@ -1207,11 +1855,6 @@ function searchThresholds(
           aiThreshold,
           humanThreshold
         );
-
-      /*
-        We strongly penalize
-        false positives.
-      */
 
       const score =
         metrics.accuracy
@@ -1261,9 +1904,9 @@ function searchThresholds(
 }
 
 
-/* =========================================================
-   STORE BENCHMARK
-========================================================= */
+/* ======================================================
+   RECORD BENCHMARK
+====================================================== */
 
 function recordBenchmark(
   data
@@ -1271,21 +1914,20 @@ function recordBenchmark(
 
   const answer =
     prompt(
-`AI TRACE V4.3 BENCHMARK
+`AI TRACE BENCHMARK
 
-Only label this if you KNOW the true origin.
+Only label if the true origin is known.
 
 AI
 HUMAN
 MIXED
 
-Cancel / empty = skip`
+Cancel = skip`
     );
 
   if (
     !answer
   ) {
-
     return;
   }
 
@@ -1322,7 +1964,7 @@ Cancel / empty = skip`
 
   const source =
     prompt(
-      'Source / note:',
+      'Source / Note:',
       truth === 'AI'
         ? 'Known AI sample'
         : truth === 'HUMAN'
@@ -1358,21 +2000,15 @@ Cancel / empty = skip`
       records
     );
 
-  const best =
-    searchThresholds(
-      records
-    );
-
-  let message =
+  alert(
 `Saved ${id}
 
-KNOWN BINARY SAMPLES: ${metrics.samples}
+Binary samples: ${metrics.samples}
 
 TP: ${metrics.TP}
 TN: ${metrics.TN}
 FP: ${metrics.FP}
 FN: ${metrics.FN}
-
 Uncertain: ${metrics.uncertain}
 
 Accuracy: ${metrics.accuracy}%
@@ -1381,31 +2017,82 @@ Recall: ${metrics.recall}%
 Specificity: ${metrics.specificity}%
 
 False Positive Rate: ${metrics.falsePositiveRate}%
-False Negative Rate: ${metrics.falseNegativeRate}%`;
-
-  if (
-    best
-  ) {
-
-    message +=
-
-`\n\nEXPERIMENTAL THRESHOLDS
-
-Human <= ${best.humanThreshold}%
-AI >= ${best.aiThreshold}%
-
-These thresholds are research-only until the benchmark is much larger.`;
-  }
-
-  alert(
-    message
+False Negative Rate: ${metrics.falseNegativeRate}%`
   );
 }
 
 
-/* =========================================================
+/* ======================================================
+   EXPORT
+====================================================== */
+
+function exportBenchmarkJSON() {
+
+  const records =
+    loadBenchmark();
+
+  const data =
+    JSON.stringify(
+      {
+        version:
+          VERSION,
+
+        exportedAt:
+          new Date()
+            .toISOString(),
+
+        metrics:
+          benchmarkMetrics(
+            records
+          ),
+
+        suggestedThresholds:
+          searchThresholds(
+            records
+          ),
+
+        records
+      },
+      null,
+      2
+    );
+
+  const blob =
+    new Blob(
+      [data],
+      {
+        type:
+          'application/json'
+      }
+    );
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+  const anchor =
+    document.createElement(
+      'a'
+    );
+
+  anchor.href =
+    url;
+
+  anchor.download =
+    `AI-Trace-Benchmark-${Date.now()}.json`;
+
+  anchor.click();
+
+  URL.revokeObjectURL(
+    url
+  );
+}
+
+
+/* ======================================================
    HISTORY
-========================================================= */
+====================================================== */
 
 function saveHistory(
   result
@@ -1442,9 +2129,9 @@ function saveHistory(
 }
 
 
-/* =========================================================
+/* ======================================================
    MAIN ANALYSIS
-========================================================= */
+====================================================== */
 
 async function run() {
 
@@ -1460,8 +2147,7 @@ async function run() {
       : 0;
 
   if (
-    wordCount <
-      80
+    wordCount < 80
   ) {
 
     alert(
@@ -1504,9 +2190,7 @@ async function run() {
     [];
 
 
-  /* =======================================================
-     TMR DOCUMENT + SEGMENTS
-  ======================================================= */
+  /* TMR */
 
   try {
 
@@ -1571,9 +2255,7 @@ async function run() {
   }
 
 
-  /* =======================================================
-     MODERNBERT
-  ======================================================= */
+  /* ModernBERT */
 
   try {
 
@@ -1605,9 +2287,7 @@ async function run() {
   }
 
 
-  /* =======================================================
-     CONSENSUS + CALIBRATION
-  ======================================================= */
+  /* Calibration */
 
   progress(
     85,
@@ -1622,9 +2302,12 @@ async function run() {
   ) {
 
     rawSignal =
-      rawConsensus(
-        tmrScore,
-        modernScore
+      Math.round(
+        (
+          tmrScore +
+          modernScore
+        ) /
+        2
       );
 
   } else if (
@@ -1725,10 +2408,6 @@ async function run() {
     evidenceQuality;
 
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
-
   render({
 
     profile,
@@ -1766,10 +2445,6 @@ async function run() {
     verdict
   });
 
-
-  /* =======================================================
-     HISTORY
-  ======================================================= */
 
   saveHistory({
 
@@ -1827,10 +2502,6 @@ async function run() {
     false;
 
 
-  /* =======================================================
-     ASK GROUND TRUTH
-  ======================================================= */
-
   setTimeout(
     () => {
 
@@ -1870,9 +2541,9 @@ async function run() {
 }
 
 
-/* =========================================================
+/* ======================================================
    HTML ESCAPE
-========================================================= */
+====================================================== */
 
 function escapeHTML(
   value
@@ -1902,9 +2573,9 @@ function escapeHTML(
 }
 
 
-/* =========================================================
+/* ======================================================
    RENDER
-========================================================= */
+====================================================== */
 
 function render(
   result
@@ -1944,10 +2615,6 @@ function render(
     .remove('hidden');
 
 
-  /* =======================================================
-     MAIN SCORE
-  ======================================================= */
-
   $('score')
     .textContent =
       calibratedScore +
@@ -1962,6 +2629,7 @@ function render(
   $('verdict')
     .textContent =
       verdict;
+
 
   let confidenceText =
     'Low';
@@ -1981,6 +2649,7 @@ function render(
       'Medium';
   }
 
+
   $('confidence')
     .textContent =
       `Confidence: ${confidenceText} (${confidence}%)`;
@@ -1997,13 +2666,10 @@ Model disagreement: ${modelGap} points.
 Segment range: ${segmentRange} points.`;
 
 
-  /* =======================================================
-     TRACE DNA
-  ======================================================= */
-
   const humanSignal =
     100 -
     calibratedScore;
+
 
   $('humanVal')
     .textContent =
@@ -2019,6 +2685,7 @@ Segment range: ${segmentRange} points.`;
     .textContent =
       uncertainty +
       '%';
+
 
   $('humanBar')
     .style
@@ -2041,12 +2708,8 @@ Segment range: ${segmentRange} points.`;
 
   $('engineBadge')
     .textContent =
-      'V4.3 • BENCHMARK CALIBRATION';
+      'V4.3.1 • BENCHMARK CALIBRATION';
 
-
-  /* =======================================================
-     EVIDENCE
-  ======================================================= */
 
   const evidence = [
 
@@ -2150,10 +2813,6 @@ Segment range: ${segmentRange} points.`;
         .join('');
 
 
-  /* =======================================================
-     DOCUMENT PROFILE
-  ======================================================= */
-
   const metrics = {
 
     Words:
@@ -2235,10 +2894,6 @@ Segment range: ${segmentRange} points.`;
         .join('');
 
 
-  /* =======================================================
-     TRACE MAP
-  ======================================================= */
-
   $('segments')
     .innerHTML =
       chunks
@@ -2285,7 +2940,8 @@ Segment range: ${segmentRange} points.`;
     )}
 
     ${
-      chunk.length > 300
+      chunk.length >
+        300
         ? '…'
         : ''
     }
@@ -2299,7 +2955,6 @@ Segment range: ${segmentRange} points.`;
 
   $('report')
     .scrollIntoView({
-
       behavior:
         'smooth',
 
@@ -2309,9 +2964,17 @@ Segment range: ${segmentRange} points.`;
 }
 
 
-/* =========================================================
-   DEVELOPER BENCHMARK UTILITIES
-========================================================= */
+/* ======================================================
+   INITIALIZE
+====================================================== */
+
+installBenchmarkButton();
+installBenchmarkModal();
+
+
+/* ======================================================
+   OPTIONAL DEVELOPER API
+====================================================== */
 
 window.AITrace = {
 
@@ -2343,65 +3006,10 @@ window.AITrace = {
   },
 
 
-  exportBenchmark() {
-
-    const data =
-      JSON.stringify(
-        this.benchmark(),
-        null,
-        2
-      );
-
-    const blob =
-      new Blob(
-        [data],
-        {
-          type:
-            'application/json'
-        }
-      );
-
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-    const anchor =
-      document.createElement(
-        'a'
-      );
-
-    anchor.href =
-      url;
-
-    anchor.download =
-      `AI-Trace-V43-Benchmark-${Date.now()}.json`;
-
-    anchor.click();
-
-    URL.revokeObjectURL(
-      url
-    );
-  },
+  showBenchmark:
+    showBenchmarkDashboard,
 
 
-  clearBenchmark() {
-
-    if (
-      !confirm(
-        'Delete all V4.3 benchmark data?'
-      )
-    ) {
-
-      return;
-    }
-
-    localStorage.removeItem(
-      BENCHMARK_KEY
-    );
-
-    alert(
-      'Benchmark cleared.'
-    );
-  }
+  exportBenchmark:
+    exportBenchmarkJSON
 };

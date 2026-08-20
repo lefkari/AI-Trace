@@ -2,19 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1"
   >
-
   <meta
     name="theme-color"
     content="#050914"
   >
 
   <title>
-    AI Trace V6.2 — Digital Authenticity Intelligence
+    AI Trace V6.3 — Digital Authenticity Intelligence
   </title>
 
   <link
@@ -27,9 +25,10 @@
 
 <div class="shell">
 
-  <!-- ======================================================
-       NAVIGATION
-  ======================================================= -->
+
+  <!-- =======================================================
+       NAV
+  ======================================================== -->
 
   <nav>
 
@@ -53,41 +52,55 @@
 
     </div>
 
-    <span class="pill">
-      V6.2 • ADAPTIVE RELIABILITY ENGINE
-    </span>
+
+    <div class="navBadges">
+
+      <span class="pill">
+        V6.3 • CALIBRATION LAB
+      </span>
+
+      <span
+        id="benchmarkReadinessTop"
+        class="pill secondaryPill"
+      >
+        Dataset: collecting
+      </span>
+
+    </div>
 
   </nav>
 
 
-  <!-- ======================================================
+
+  <!-- =======================================================
        HERO
-  ======================================================= -->
+  ======================================================== -->
 
   <header>
 
     <span class="over">
-      TRACE DNA™ • TEXT ENGINE V6.2
+      TRACE DNA™ • ADAPTIVE TEXT FORENSICS
     </span>
 
     <h1>
-      Know what’s real.
-      <br>
+      Know what’s real.<br>
       Know what’s AI.
     </h1>
 
     <p>
-      Evidence-first AI text analysis using adaptive detector
-      reliability, domain-aware consensus, human counter-evidence
-      and calibrated abstention.
+      Evidence-first AI text analysis using multiple local
+      detectors, adaptive reliability weighting, domain context,
+      human counter-evidence, calibration data and conservative
+      abstention logic.
     </p>
 
   </header>
 
 
-  <!-- ======================================================
-       SCANNER
-  ======================================================= -->
+
+  <!-- =======================================================
+       MAIN SCANNER
+  ======================================================== -->
 
   <section class="scanner panel">
 
@@ -140,7 +153,7 @@
         id="modelState"
         class="state"
       >
-        Adaptive engine standby
+        Smart engine standby
       </span>
 
     </div>
@@ -150,7 +163,6 @@
       id="text"
       maxlength="40000"
       placeholder="Paste English text here. 150+ words is recommended."
-      spellcheck="true"
     ></textarea>
 
 
@@ -205,9 +217,10 @@
   </section>
 
 
-  <!-- ======================================================
+
+  <!-- =======================================================
        REPORT
-  ======================================================= -->
+  ======================================================== -->
 
   <section
     id="report"
@@ -215,9 +228,9 @@
   >
 
 
-    <!-- ====================================================
-         TOP REPORT
-    ===================================================== -->
+    <!-- =====================================================
+         TOP RESULT
+    ====================================================== -->
 
     <div class="reportGrid">
 
@@ -250,21 +263,15 @@
 
 
         <div class="scale">
-
           <span id="scaleFill"></span>
-
         </div>
 
 
-        <p id="explain">
-        </p>
+        <p id="explain"></p>
 
       </div>
 
 
-      <!-- ==================================================
-           TRACE DNA
-      =================================================== -->
 
       <div class="panel dna">
 
@@ -328,16 +335,13 @@
     </div>
 
 
-    <!-- ====================================================
-         EVIDENCE + METRICS
-    ===================================================== -->
+
+    <!-- =====================================================
+         EVIDENCE + DOCUMENT PROFILE
+    ====================================================== -->
 
     <div class="reportGrid lower">
 
-
-      <!-- ==================================================
-           EVIDENCE
-      =================================================== -->
 
       <div class="panel">
 
@@ -359,8 +363,7 @@
           <span
             id="engineBadge"
             class="pill"
-          >
-          </span>
+          ></span>
 
         </div>
 
@@ -368,15 +371,11 @@
         <div
           id="evidence"
           class="evidence"
-        >
-        </div>
+        ></div>
 
       </div>
 
 
-      <!-- ==================================================
-           DOCUMENT PROFILE
-      =================================================== -->
 
       <div class="panel">
 
@@ -391,17 +390,17 @@
         <div
           id="metrics"
           class="metrics"
-        >
-        </div>
+        ></div>
 
       </div>
 
     </div>
 
 
-    <!-- ====================================================
+
+    <!-- =====================================================
          TRACE MAP
-    ===================================================== -->
+    ====================================================== -->
 
     <div class="panel segmentsPanel">
 
@@ -414,23 +413,23 @@
       </h2>
 
       <p class="sub">
-        Text chunks are analyzed independently. Mixed or unstable
-        documents automatically reduce confidence and can trigger
-        deeper model verification.
+        Text chunks are analyzed independently.
+        Mixed or unstable documents automatically reduce confidence
+        and can trigger deeper verification.
       </p>
 
       <div
         id="segments"
         class="segments"
-      >
-      </div>
+      ></div>
 
     </div>
 
 
-    <!-- ====================================================
-         SAFETY NOTICE
-    ===================================================== -->
+
+    <!-- =====================================================
+         SAFETY WARNING
+    ====================================================== -->
 
     <div class="warning">
 
@@ -438,48 +437,539 @@
         Evidence, not accusation.
       </b>
 
-      AI Trace estimates patterns associated with
-      machine-generated text.
-
-      It does not prove authorship and should not be used alone
-      for disciplinary, employment, legal, academic-integrity
-      or other high-stakes decisions.
+      AI Trace estimates patterns associated with machine-generated
+      text. It does not prove authorship and should not be used alone
+      for disciplinary, employment, legal, academic-integrity or
+      other high-stakes decisions.
 
     </div>
 
 
-    <!--
-      IMPORTANT:
 
-      The V6.2 Benchmark / Reliability panel does NOT need
-      to be hard-coded here.
+    <!-- =====================================================
+         V6.3 DATASET MANAGER
+    ====================================================== -->
 
-      app.js will automatically create and insert it
-      underneath this section.
-    -->
+    <section
+      id="datasetManager"
+      class="panel labPanel"
+    >
+
+      <div class="sectionTitle">
+
+        <div>
+
+          <span class="over">
+            V6.3 DATASET MANAGER
+          </span>
+
+          <h2>
+            Calibration Dataset
+          </h2>
+
+        </div>
+
+
+        <span
+          id="datasetStatusBadge"
+          class="pill"
+        >
+          Collecting
+        </span>
+
+      </div>
+
+
+      <p class="sub">
+        Known AI and HUMAN samples are used to evaluate detector
+        reliability. MIXED samples are stored separately. UNKNOWN
+        samples are excluded from supervised calibration.
+      </p>
+
+
+
+      <!-- DATASET SUMMARY -->
+
+      <div
+        id="datasetSummary"
+        class="metrics datasetSummary"
+      >
+
+        <div class="metric">
+          <span>
+            Total records
+          </span>
+          <b id="datasetTotal">
+            0
+          </b>
+        </div>
+
+        <div class="metric">
+          <span>
+            Binary samples
+          </span>
+          <b id="datasetBinary">
+            0
+          </b>
+        </div>
+
+        <div class="metric">
+          <span>
+            AI
+          </span>
+          <b id="datasetAI">
+            0
+          </b>
+        </div>
+
+        <div class="metric">
+          <span>
+            HUMAN
+          </span>
+          <b id="datasetHuman">
+            0
+          </b>
+        </div>
+
+        <div class="metric">
+          <span>
+            MIXED
+          </span>
+          <b id="datasetMixed">
+            0
+          </b>
+        </div>
+
+        <div class="metric">
+          <span>
+            UNKNOWN
+          </span>
+          <b id="datasetUnknown">
+            0
+          </b>
+        </div>
+
+        <div class="metric">
+          <span>
+            Domains
+          </span>
+          <b id="datasetDomains">
+            0
+          </b>
+        </div>
+
+      </div>
+
+
+
+      <!-- DATASET ACTIONS -->
+
+      <div class="datasetActions">
+
+        <button
+          id="exportBenchmarkJSON"
+          class="soft"
+          type="button"
+        >
+          Export JSON
+        </button>
+
+        <button
+          id="exportBenchmarkCSV"
+          class="soft"
+          type="button"
+        >
+          Export CSV
+        </button>
+
+        <button
+          id="openBulkImport"
+          class="soft"
+          type="button"
+        >
+          Bulk Import
+        </button>
+
+        <button
+          id="clearBenchmark"
+          class="dangerSoft"
+          type="button"
+        >
+          Clear Dataset
+        </button>
+
+      </div>
+
+
+
+      <!-- ===================================================
+           BULK IMPORT
+      ==================================================== -->
+
+      <div
+        id="bulkImportPanel"
+        class="bulkImport hidden"
+      >
+
+        <div class="bulkHeader">
+
+          <div>
+
+            <span class="over">
+              BULK IMPORT
+            </span>
+
+            <h3>
+              Import benchmark samples
+            </h3>
+
+          </div>
+
+
+          <button
+            id="closeBulkImport"
+            class="soft smallButton"
+            type="button"
+          >
+            Close
+          </button>
+
+        </div>
+
+
+        <p class="sub">
+          Paste one JSON object per line. Each sample can contain
+          truth, source, domain and text. The scanner can then process
+          these samples sequentially for calibration.
+        </p>
+
+
+        <textarea
+          id="bulkImportText"
+          class="bulkTextarea"
+          placeholder='{"truth":"HUMAN","source":"personal essay","domain":"general","text":"Paste text here..."}
+
+{"truth":"AI","source":"ChatGPT","domain":"general","text":"Paste AI-generated text here..."}'
+        ></textarea>
+
+
+        <div class="bulkActions">
+
+          <span id="bulkImportCount">
+            0 samples detected
+          </span>
+
+          <button
+            id="validateBulkImport"
+            class="soft"
+            type="button"
+          >
+            Validate
+          </button>
+
+          <button
+            id="importBulkSamples"
+            class="cta"
+            type="button"
+          >
+            Import Samples
+          </button>
+
+        </div>
+
+
+        <div
+          id="bulkImportResult"
+          class="importResult hidden"
+        ></div>
+
+      </div>
+
+
+
+      <!-- ===================================================
+           DATASET RECORDS
+      ==================================================== -->
+
+      <div class="labSection">
+
+        <h3>
+          Recent dataset records
+        </h3>
+
+        <div
+          id="datasetRecords"
+          class="evidence"
+        >
+
+          <div class="ev">
+
+            <small>
+              No V6.3 dataset records yet.
+            </small>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         V6.3 CALIBRATION LAB
+    ====================================================== -->
+
+    <section
+      id="calibrationLab"
+      class="panel labPanel"
+    >
+
+      <div class="sectionTitle">
+
+        <div>
+
+          <span class="over">
+            V6.3 CALIBRATION ENGINE
+          </span>
+
+          <h2>
+            Reliability & Calibration Lab
+          </h2>
+
+        </div>
+
+
+        <span
+          id="calibrationStatusBadge"
+          class="pill"
+        >
+          Not ready
+        </span>
+
+      </div>
+
+
+      <p class="sub">
+        The calibration engine evaluates each detector independently,
+        tracks abstentions separately, and prevents low-sample
+        benchmark data from dominating future predictions.
+      </p>
+
+
+
+      <!-- READINESS -->
+
+      <div class="labSection">
+
+        <h3>
+          Calibration readiness
+        </h3>
+
+        <div
+          id="calibrationReadiness"
+          class="evidence"
+        >
+
+          <div class="ev">
+
+            <div class="evTop">
+
+              <span>
+                COLLECTING
+              </span>
+
+              <span>
+                LEARNING LIMITED
+              </span>
+
+            </div>
+
+            <small>
+              More known AI and HUMAN samples are required.
+            </small>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- ENSEMBLE -->
+
+      <div class="labSection">
+
+        <h3>
+          Ensemble performance
+        </h3>
+
+        <div
+          id="ensembleMetrics"
+          class="metrics"
+        ></div>
+
+      </div>
+
+
+
+      <!-- DETECTORS -->
+
+      <div class="labSection">
+
+        <h3>
+          Detector reliability
+        </h3>
+
+        <div
+          id="detectorReliability"
+          class="evidence"
+        ></div>
+
+      </div>
+
+
+
+      <!-- DOMAIN PERFORMANCE -->
+
+      <div class="labSection">
+
+        <h3>
+          Domain performance
+        </h3>
+
+        <div
+          id="domainPerformance"
+          class="metrics"
+        ></div>
+
+      </div>
+
+
+
+      <!-- FALSE POSITIVE -->
+
+      <div class="labSection">
+
+        <h3>
+          False-positive inspector
+        </h3>
+
+        <div
+          id="falsePositiveInspector"
+          class="evidence"
+        >
+
+          <div class="ev">
+
+            <small>
+              No false-positive records available.
+            </small>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- FALSE NEGATIVE -->
+
+      <div class="labSection">
+
+        <h3>
+          False-negative inspector
+        </h3>
+
+        <div
+          id="falseNegativeInspector"
+          class="evidence"
+        >
+
+          <div class="ev">
+
+            <small>
+              No false-negative records available.
+            </small>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- ABSTENTION -->
+
+      <div class="labSection">
+
+        <h3>
+          Abstention inspector
+        </h3>
+
+        <div
+          id="abstentionInspector"
+          class="evidence"
+        >
+
+          <div class="ev">
+
+            <small>
+              No abstention records available.
+            </small>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         V6.3 DEVELOPMENT NOTICE
+    ====================================================== -->
+
+    <div class="warning devWarning">
+
+      <b>
+        Development benchmark only.
+      </b>
+
+      Accuracy, precision, recall, false-positive rates and related
+      metrics shown inside the Calibration Lab describe only the
+      known samples stored on this device. They must not be presented
+      as production accuracy claims until evaluated on a much larger,
+      independent benchmark.
+
+    </div>
 
   </section>
 
 
-  <!-- ======================================================
+
+  <!-- =======================================================
        FOOTER
-  ======================================================= -->
+  ======================================================== -->
 
   <footer>
 
-    AI TRACE V6.2
-    · Adaptive Reliability Engine
-    · Local browser inference
+    AI TRACE V6.3
+    · Adaptive local inference
+    · Calibration Dataset
     · Zero paid API
 
   </footer>
 
 </div>
 
-
-<!-- ========================================================
-     JAVASCRIPT
-========================================================= -->
 
 <script
   type="module"

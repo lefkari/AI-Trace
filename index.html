@@ -2,7 +2,6 @@
 <html lang="en">
 
 <head>
-
   <meta charset="UTF-8">
 
   <meta
@@ -21,14 +20,13 @@
   >
 
   <title>
-    AI Trace V6.5 — Digital Authenticity Intelligence
+    AI Trace V6.6 — Digital Authenticity Intelligence
   </title>
 
   <link
     rel="stylesheet"
     href="style.css"
   >
-
 </head>
 
 
@@ -50,15 +48,11 @@
       </div>
 
       <div>
-
-        <b>
-          AI TRACE
-        </b>
+        <b>AI TRACE</b>
 
         <small>
           Digital Authenticity Intelligence
         </small>
-
       </div>
 
     </div>
@@ -74,7 +68,7 @@
       </span>
 
       <span class="pill">
-        V6.5 • ADAPTIVE CALIBRATION ENGINE
+        V6.6 • DATASET ENGINE
       </span>
 
     </div>
@@ -90,7 +84,7 @@
   <header>
 
     <span class="over">
-      TRACE DNA™ • TEXT ENGINE V6.5
+      TRACE DNA™ • TEXT ENGINE V6.6
     </span>
 
     <h1>
@@ -100,8 +94,9 @@
 
     <p>
       Evidence-first AI text analysis using multiple local detectors,
-      adaptive reliability weighting, human counter-evidence,
-      domain awareness and conservative abstention.
+      adaptive reliability weighting, domain awareness,
+      human counter-evidence, conservative abstention
+      and benchmark-driven calibration.
     </p>
 
   </header>
@@ -109,7 +104,7 @@
 
 
   <!-- ======================================================
-       SCANNER
+       MAIN SCANNER
   ======================================================= -->
 
   <section class="scanner panel">
@@ -231,7 +226,7 @@
 
   <!-- ======================================================
        SCAN REPORT
-       ONLY THIS PART IS HIDDEN BEFORE A SCAN
+       HIDDEN UNTIL SCAN
   ======================================================= -->
 
   <section
@@ -239,18 +234,16 @@
     class="hidden"
   >
 
-
-    <!-- SCORE + TRACE DNA -->
-
     <div class="reportGrid">
 
+
+      <!-- SCORE -->
 
       <div class="panel scoreCard">
 
         <span class="over">
           CALIBRATED AI SIGNAL
         </span>
-
 
         <div class="scoreRow">
 
@@ -277,12 +270,13 @@
           <span id="scaleFill"></span>
         </div>
 
-
         <p id="explain"></p>
 
       </div>
 
 
+
+      <!-- TRACE DNA -->
 
       <div class="panel dna">
 
@@ -347,10 +341,11 @@
 
 
 
-    <!-- EVIDENCE + PROFILE -->
+    <!-- ====================================================
+         EVIDENCE + DOCUMENT PROFILE
+    ===================================================== -->
 
     <div class="reportGrid lower">
-
 
       <div class="panel">
 
@@ -368,14 +363,12 @@
 
           </div>
 
-
           <span
             id="engineBadge"
             class="pill"
           ></span>
 
         </div>
-
 
         <div
           id="evidence"
@@ -396,7 +389,6 @@
           Analysis metrics
         </h2>
 
-
         <div
           id="metrics"
           class="metrics"
@@ -408,7 +400,9 @@
 
 
 
-    <!-- TRACE MAP -->
+    <!-- ====================================================
+         TRACE MAP
+    ===================================================== -->
 
     <div class="panel segmentsPanel">
 
@@ -423,9 +417,8 @@
       <p class="sub">
         Text segments are analyzed independently.
         Mixed or unstable evidence reduces confidence
-        and can trigger deeper model verification.
+        and may trigger deeper model verification.
       </p>
-
 
       <div
         id="segments"
@@ -435,9 +428,6 @@
     </div>
 
 
-
-    <!-- SCAN SAFETY NOTICE -->
-
     <div class="warning">
 
       <b>
@@ -446,8 +436,8 @@
 
       AI Trace estimates signals associated with machine-generated
       text. It does not prove authorship and should not be used alone
-      for disciplinary, employment, legal, academic-integrity or
-      other high-stakes decisions.
+      for disciplinary, employment, legal, academic-integrity
+      or other high-stakes decisions.
 
     </div>
 
@@ -470,7 +460,7 @@
       <div>
 
         <span class="over">
-          V6.5 CALIBRATION DATASET
+          V6.6 BENCHMARK DATASET
         </span>
 
         <h2>
@@ -478,7 +468,6 @@
         </h2>
 
       </div>
-
 
       <span
         id="datasetStatusBadge"
@@ -491,14 +480,14 @@
 
 
     <p class="sub">
-      Known-origin AI and HUMAN samples are used to evaluate
-      detector reliability, false positives, false negatives,
-      coverage and abstention behavior.
+      Build a known-origin benchmark dataset and use it to measure
+      detector reliability, coverage, false positives,
+      false negatives and abstention behavior.
     </p>
 
 
 
-    <!-- DATASET SUMMARY -->
+    <!-- DATASET METRICS -->
 
     <div
       id="datasetSummary"
@@ -506,100 +495,45 @@
     >
 
       <div class="metric">
-
-        <span>
-          Total records
-        </span>
-
-        <b id="datasetTotal">
-          0
-        </b>
-
+        <span>Total records</span>
+        <b id="datasetTotal">0</b>
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Binary samples
-        </span>
-
-        <b id="datasetBinary">
-          0
-        </b>
-
+        <span>Binary samples</span>
+        <b id="datasetBinary">0</b>
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Known AI
-        </span>
-
-        <b id="datasetAI">
-          0
-        </b>
-
+        <span>Known AI</span>
+        <b id="datasetAI">0</b>
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Known HUMAN
-        </span>
-
-        <b id="datasetHuman">
-          0
-        </b>
-
+        <span>Known HUMAN</span>
+        <b id="datasetHuman">0</b>
       </div>
 
-
       <div class="metric">
-
-        <span>
-          MIXED
-        </span>
-
-        <b id="datasetMixed">
-          0
-        </b>
-
+        <span>MIXED</span>
+        <b id="datasetMixed">0</b>
       </div>
 
-
       <div class="metric">
-
-        <span>
-          UNKNOWN
-        </span>
-
-        <b id="datasetUnknown">
-          0
-        </b>
-
+        <span>UNKNOWN</span>
+        <b id="datasetUnknown">0</b>
       </div>
 
-
       <div class="metric">
-
-        <span>
-          Domains
-        </span>
-
-        <b id="datasetDomains">
-          0
-        </b>
-
+        <span>Domains</span>
+        <b id="datasetDomains">0</b>
       </div>
 
     </div>
 
 
 
-    <!-- DATASET BUTTONS -->
+    <!-- DATASET ACTIONS -->
 
     <div class="datasetActions">
 
@@ -608,7 +542,7 @@
         class="soft"
         type="button"
       >
-        Bulk Import
+        Dataset Importer
       </button>
 
 
@@ -660,7 +594,9 @@
 
 
 
-    <!-- BATCH WORKER -->
+    <!-- ====================================================
+         BATCH WORKER
+    ===================================================== -->
 
     <div
       id="batchWorkerStatus"
@@ -697,14 +633,13 @@
 
 
 
-    <!-- RECENT RECORDS -->
+    <!-- RECENT DATASET -->
 
     <div class="labSection">
 
       <h3>
         Recent benchmark records
       </h3>
-
 
       <div
         id="datasetRecords"
@@ -728,8 +663,7 @@
 
 
   <!-- ======================================================
-       BULK IMPORT
-       ALWAYS AVAILABLE
+       V6.6 DATASET IMPORTER
   ======================================================= -->
 
   <section
@@ -742,7 +676,7 @@
       <div>
 
         <span class="over">
-          V6.5 BULK DATASET IMPORT
+          V6.6 DATASET IMPORTER
         </span>
 
         <h2>
@@ -764,19 +698,100 @@
 
 
     <p class="sub">
-      Paste one JSON object per line.
-      Every object must contain a truth label and original text.
-      Source and domain are recommended.
+      Import known-origin benchmark samples using JSONL,
+      JSON or plain-text dataset files, or paste JSONL directly.
     </p>
 
 
 
-    <!-- FORMAT -->
+    <!-- ====================================================
+         FILE IMPORT
+    ===================================================== -->
+
+    <div class="importBox">
+
+      <span class="over">
+        FILE IMPORT
+      </span>
+
+      <h3>
+        Upload dataset
+      </h3>
+
+      <p class="sub">
+        Supported formats:
+        .jsonl, .json and .txt
+      </p>
+
+
+      <input
+        id="datasetFileInput"
+        type="file"
+        accept=".jsonl,.json,.txt,application/json,text/plain"
+        hidden
+      >
+
+
+      <div class="datasetActions">
+
+        <button
+          id="chooseDatasetFile"
+          class="cta"
+          type="button"
+        >
+          Choose Dataset File
+        </button>
+
+        <button
+          id="clearDatasetFile"
+          class="soft"
+          type="button"
+        >
+          Clear File
+        </button>
+
+      </div>
+
+
+      <div
+        id="datasetFileInfo"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <div class="evTop">
+
+            <span>
+              No file selected
+            </span>
+
+            <span>
+              READY
+            </span>
+
+          </div>
+
+          <small>
+            Select a JSONL, JSON or TXT benchmark dataset.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         FORMAT INFORMATION
+    ===================================================== -->
 
     <div class="warning">
 
       <b>
-        Format
+        Recommended JSONL format
       </b>
 
       <br><br>
@@ -786,66 +801,181 @@
       <br><br>
 
       <code>
-        {"truth":"HUMAN","source":"Known human source","domain":"general","text":"Human text here..."}
+        {"truth":"HUMAN","source":"Known source","domain":"books","text":"Human text here..."}
       </code>
 
       <br><br>
 
       <code>
-        {"truth":"AI","source":"ChatGPT","domain":"general","text":"AI text here..."}
+        {"truth":"AI","source":"Known AI model","domain":"general","text":"AI text here..."}
       </code>
 
+      <br><br>
+
+      Allowed truth labels:
+
+      <b>
+        AI · HUMAN · MIXED · UNKNOWN
+      </b>
+
     </div>
 
 
 
-    <!-- TEXTAREA -->
+    <!-- ====================================================
+         PASTE IMPORT
+    ===================================================== -->
 
-    <textarea
-      id="bulkImportText"
-      class="bulkTextarea"
-      maxlength="500000"
-      placeholder='{"truth":"HUMAN","source":"Known human source","domain":"general","text":"Sample text here..."}
+    <div class="importBox">
 
-{"truth":"AI","source":"ChatGPT","domain":"general","text":"Sample text here..."}'
-    ></textarea>
-
-
-
-    <!-- ACTIONS -->
-
-    <div class="bulkActions">
-
-      <span id="bulkImportCount">
-        0 samples detected
+      <span class="over">
+        PASTE IMPORT
       </span>
 
-
-      <button
-        id="validateBulkImport"
-        class="soft"
-        type="button"
-      >
-        Validate
-      </button>
+      <h3>
+        Paste JSONL
+      </h3>
 
 
-      <button
-        id="importBulkSamples"
-        class="cta"
-        type="button"
-      >
-        Import Samples
-      </button>
+      <textarea
+        id="bulkImportText"
+        class="bulkTextarea"
+        maxlength="1000000"
+        placeholder='{"truth":"HUMAN","source":"Known human source","domain":"general","text":"Sample text here..."}
+
+{"truth":"AI","source":"Known AI source","domain":"general","text":"Sample text here..."}'
+      ></textarea>
+
+
+
+      <div class="bulkActions">
+
+        <span id="bulkImportCount">
+          0 samples detected
+        </span>
+
+
+        <button
+          id="validateBulkImport"
+          class="soft"
+          type="button"
+        >
+          Validate Dataset
+        </button>
+
+
+        <button
+          id="importBulkSamples"
+          class="cta"
+          type="button"
+        >
+          Add to Calibration Queue
+        </button>
+
+      </div>
 
     </div>
 
 
+
+    <!-- ====================================================
+         VALIDATION RESULT
+    ===================================================== -->
 
     <div
       id="bulkImportResult"
       class="importResult hidden"
     ></div>
+
+
+
+    <!-- ====================================================
+         IMPORT STATISTICS
+    ===================================================== -->
+
+    <div
+      id="importPreview"
+      class="metrics"
+    >
+
+      <div class="metric">
+
+        <span>
+          Valid samples
+        </span>
+
+        <b id="importValidCount">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          Invalid samples
+        </span>
+
+        <b id="importInvalidCount">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          AI
+        </span>
+
+        <b id="importAICount">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          HUMAN
+        </span>
+
+        <b id="importHumanCount">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          MIXED
+        </span>
+
+        <b id="importMixedCount">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          UNKNOWN
+        </span>
+
+        <b id="importUnknownCount">
+          0
+        </b>
+
+      </div>
+
+    </div>
 
   </section>
 
@@ -866,7 +996,7 @@
       <div>
 
         <span class="over">
-          V6.5 CALIBRATION LAB
+          V6.6 CALIBRATION LAB
         </span>
 
         <h2>
@@ -887,9 +1017,10 @@
 
 
     <p class="sub">
-      Detector weights become more meaningful only after enough
-      known-origin benchmark samples have been collected.
-      Small datasets remain protected from overfitting.
+      Benchmark results describe only the known-origin samples
+      stored locally in this browser. Adaptive weighting should
+      remain conservative until the dataset becomes sufficiently
+      large and diverse.
     </p>
 
 
@@ -922,9 +1053,8 @@
 
           </div>
 
-
           <small>
-            More known AI and HUMAN samples are required.
+            More known-origin samples are required.
           </small>
 
         </div>
@@ -935,14 +1065,13 @@
 
 
 
-    <!-- ENSEMBLE -->
+    <!-- ENSEMBLE PERFORMANCE -->
 
     <div class="labSection">
 
       <h3>
         Ensemble performance
       </h3>
-
 
       <div
         id="ensembleMetrics"
@@ -953,14 +1082,13 @@
 
 
 
-    <!-- RELIABILITY -->
+    <!-- DETECTOR RELIABILITY -->
 
     <div class="labSection">
 
       <h3>
         Detector reliability
       </h3>
-
 
       <div
         id="detectorReliability"
@@ -971,14 +1099,13 @@
 
 
 
-    <!-- DOMAIN -->
+    <!-- DOMAIN PERFORMANCE -->
 
     <div class="labSection">
 
       <h3>
         Domain performance
       </h3>
-
 
       <div
         id="domainPerformance"
@@ -998,9 +1125,8 @@
       </h3>
 
       <p class="sub">
-        Known HUMAN samples that were classified as AI.
+        Known HUMAN samples classified as AI.
       </p>
-
 
       <div
         id="falsePositiveInspector"
@@ -1028,9 +1154,8 @@
       </h3>
 
       <p class="sub">
-        Known AI samples that were classified as HUMAN.
+        Known AI samples classified as HUMAN.
       </p>
-
 
       <div
         id="falseNegativeInspector"
@@ -1058,10 +1183,9 @@
       </h3>
 
       <p class="sub">
-        Known-origin samples where the engine returned
-        INCONCLUSIVE instead of forcing a verdict.
+        Known-origin samples where AI Trace returned
+        INCONCLUSIVE rather than forcing a verdict.
       </p>
-
 
       <div
         id="abstentionInspector"
@@ -1093,9 +1217,9 @@
     </b>
 
     Accuracy, precision, recall, specificity,
-    false-positive rates and other metrics shown here describe
-    only the known-origin benchmark samples stored locally
-    in this browser.
+    false-positive rate, false-negative rate and other
+    metrics displayed by AI Trace describe only the
+    benchmark samples currently stored in this browser.
 
     They are not production accuracy claims.
 
@@ -1115,8 +1239,8 @@
 
     AI Trace estimates patterns associated with machine-generated
     text. It does not prove authorship and should not be used alone
-    for disciplinary, employment, legal, academic-integrity or
-    other high-stakes decisions.
+    for disciplinary, employment, legal, academic-integrity
+    or other high-stakes decisions.
 
   </div>
 
@@ -1128,8 +1252,9 @@
 
   <footer>
 
-    AI TRACE V6.5
+    AI TRACE V6.6
     · Adaptive local inference
+    · Dataset Importer
     · Calibration Lab
     · Zero paid API
 
@@ -1147,7 +1272,6 @@
   type="module"
   src="app.js"
 ></script>
-
 
 </body>
 

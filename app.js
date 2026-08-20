@@ -1,26 +1,27 @@
 /*
   ============================================================
-  AI TRACE V6.4 — BATCH CALIBRATION WORKER
+  AI TRACE V6.6 — DATASET IMPORTER + CALIBRATION ENGINE
   PART 1 / 3
 
-  Core:
-  - TMR detector
-  - E5-small detector
-  - Conditional ModernBERT
+  Includes:
+  - Core helpers
+  - UI
+  - Text profiling
+  - Domain detection
   - Human counter-evidence
-  - Domain estimation
-  - Segment analysis
-  - Adaptive reliability
-  - Leave-one-out calibration
-  - Batch queue infrastructure
-  - Resume-safe local storage
+  - TMR / E5 / ModernBERT
+  - Model output normalization
+  - Benchmark storage + migration
+  - Dataset-file parsing infrastructure
   ============================================================
 */
+
 
 import {
   pipeline,
   env
 } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -30,7 +31,7 @@ env.useBrowserCache = true;
    VERSION
 ============================================================ */
 
-const VERSION = '6.4';
+const VERSION = '6.6';
 
 
 /* ============================================================
@@ -52,23 +53,25 @@ const MODEL_MODERN =
 ============================================================ */
 
 const BENCH_KEY =
-  'aiTraceBenchmarkV64';
+  'aiTraceBenchmarkV66';
 
 const HISTORY_KEY =
-  'aiTraceHistoryV64';
+  'aiTraceHistoryV66';
 
-const IMPORT_KEY =
-  'aiTraceCalibrationQueueV64';
+const QUEUE_KEY =
+  'aiTraceCalibrationQueueV66';
 
 const WORKER_STATE_KEY =
-  'aiTraceCalibrationWorkerStateV64';
+  'aiTraceCalibrationWorkerStateV66';
 
 
 /* ============================================================
-   LEGACY BENCHMARK KEYS
+   LEGACY DATA
 ============================================================ */
 
 const LEGACY_BENCH_KEYS = [
+  'aiTraceBenchmarkV65',
+  'aiTraceBenchmarkV64',
   'aiTraceBenchmarkV63',
   'aiTraceBenchmarkV62',
   'aiTraceBenchmarkV61',
@@ -77,6 +80,12 @@ const LEGACY_BENCH_KEYS = [
   'aiTraceBenchmarkV53',
   'aiTraceBenchmarkV52',
   'aiTraceBenchmarkV51'
+];
+
+
+const LEGACY_QUEUE_KEYS = [
+  'aiTraceCalibrationQueueV64',
+  'aiTraceImportedDatasetV63'
 ];
 
 
@@ -95,7 +104,14 @@ let modernModel = null;
 
 let workerRunning = false;
 let workerPaused = false;
-let workerAbortRequested = false;
+let workerStopRequested = false;
+
+
+/* ============================================================
+   FILE IMPORT STATE
+============================================================ */
+
+let selectedDatasetFile = null;
 
 
 /* ============================================================
@@ -110,7 +126,7 @@ const textEl =
 
 
 /* ============================================================
-   GENERIC HELPERS
+   BASIC HELPERS
 ============================================================ */
 
 function clamp(
@@ -118,6 +134,7 @@ function clamp(
   min = 0,
   max = 100
 ) {
+
   return Math.max(
     min,
     Math.min(
@@ -129,12 +146,14 @@ function clamp(
 
 
 function nowISO() {
+
   return new Date()
     .toISOString();
 }
 
 
 function sleep(ms) {
+
   return new Promise(
     resolve =>
       setTimeout(
@@ -146,6 +165,7 @@ function sleep(ms) {
 
 
 function wordCount(value) {
+
   const clean =
     String(
       value || ''
@@ -164,6 +184,7 @@ function wordCount(value) {
 
 
 function average(values) {
+
   const usable =
     values.filter(
       Number.isFinite
@@ -182,6 +203,7 @@ function average(values) {
 
 
 function median(values) {
+
   const usable =
     values
       .filter(
@@ -205,19 +227,25 @@ function median(values) {
   if (
     usable.length % 2
   ) {
+
     return usable[
       middle
     ];
   }
 
   return (
-    usable[middle - 1] +
-    usable[middle]
+    usable[
+      middle - 1
+    ] +
+    usable[
+      middle
+    ]
   ) / 2;
 }
 
 
 function standardDeviation(values) {
+
   const usable =
     values.filter(
       Number.isFinite
@@ -250,6 +278,7 @@ function percentage(
   numerator,
   denominator
 ) {
+
   if (!denominator) {
     return 0;
   }
@@ -263,17 +292,27 @@ function percentage(
 
 
 function escapeHTML(value) {
+
   return String(
     value ?? ''
   ).replace(
     /[&<>"']/g,
     character =>
       ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
+        '&':
+          '&amp;',
+
+        '<':
+          '&lt;',
+
+        '>':
+          '&gt;',
+
+        '"':
+          '&quot;',
+
+        "'":
+          '&#039;'
       })[
         character
       ]
@@ -281,19 +320,8 @@ function escapeHTML(value) {
 }
 
 
-function countMatches(
-  value,
-  regex
-) {
-  return (
-    String(value)
-      .match(regex) ||
-    []
-  ).length;
-}
-
-
 function detectLanguage(value) {
+
   const latin =
     (
       value.match(
@@ -313,46 +341,71 @@ function detectLanguage(value) {
   }
 
   return (
-    latin / letters >= 0.82
+    latin /
+    letters >=
+    0.82
   )
     ? 'English'
     : 'Non-English';
 }
 
 
+function countMatches(
+  value,
+  regex
+) {
+
+  return (
+    String(value)
+      .match(regex) ||
+    []
+  ).length;
+}
+
+
 function isMobileDevice() {
+
   return (
     window.matchMedia(
       '(max-width: 768px)'
     ).matches ||
-    /Android|iPhone|iPad|iPod/i.test(
-      navigator.userAgent
-    )
+
+    /Android|iPhone|iPad|iPod/i
+      .test(
+        navigator.userAgent
+      )
   );
 }
 
 
 /* ============================================================
-   STORAGE
+   STORAGE HELPERS
 ============================================================ */
 
 function loadJSON(
   key,
   fallback = []
 ) {
+
   try {
+
     const raw =
       localStorage.getItem(
         key
       );
 
-    return raw
-      ? JSON.parse(raw)
-      : fallback;
+    if (!raw) {
+      return fallback;
+    }
+
+    return JSON.parse(
+      raw
+    );
 
   } catch (error) {
+
     console.warn(
-      `Storage read failed: ${key}`,
+      `Could not read ${key}:`,
       error
     );
 
@@ -363,21 +416,24 @@ function loadJSON(
 
 function saveJSON(
   key,
-  value
+  data
 ) {
+
   try {
+
     localStorage.setItem(
       key,
       JSON.stringify(
-        value
+        data
       )
     );
 
     return true;
 
   } catch (error) {
+
     console.warn(
-      `Storage write failed: ${key}`,
+      `Could not save ${key}:`,
       error
     );
 
@@ -391,15 +447,15 @@ function saveJSON(
 ============================================================ */
 
 function updateCount() {
-  if (
-    !$('count')
-  ) {
+
+  if (!$('count')) {
     return;
   }
 
   $('count').textContent =
     `${wordCount(
-      textEl?.value || ''
+      textEl?.value ||
+      ''
     )} words`;
 }
 
@@ -408,6 +464,7 @@ function setProgress(
   percent,
   label
 ) {
+
   $('progress')
     ?.classList
     .remove(
@@ -415,25 +472,33 @@ function setProgress(
     );
 
   if ($('bar')) {
+
     $('bar').style.width =
-      `${clamp(percent)}%`;
+      `${clamp(
+        percent
+      )}%`;
   }
 
   if ($('progressText')) {
-    $('progressText').textContent =
+
+    $('progressText')
+      .textContent =
       label;
   }
 }
 
 
 function hideProgress() {
+
   setTimeout(
     () => {
+
       $('progress')
         ?.classList
         .add(
           'hidden'
         );
+
     },
     450
   );
@@ -441,8 +506,11 @@ function hideProgress() {
 
 
 function setState(label) {
+
   if ($('modelState')) {
-    $('modelState').textContent =
+
+    $('modelState')
+      .textContent =
       label;
   }
 }
@@ -450,25 +518,35 @@ function setState(label) {
 
 function setWorkerUI(
   state,
-  text,
+  message,
   percent = null
 ) {
+
   if ($('batchWorkerState')) {
-    $('batchWorkerState').textContent =
+
+    $('batchWorkerState')
+      .textContent =
       state;
   }
 
   if ($('batchWorkerText')) {
-    $('batchWorkerText').textContent =
-      text;
+
+    $('batchWorkerText')
+      .textContent =
+      message;
   }
 
   if (
     percent !== null &&
     $('batchWorkerBar')
   ) {
-    $('batchWorkerBar').style.width =
-      `${clamp(percent)}%`;
+
+    $('batchWorkerBar')
+      .style
+      .width =
+      `${clamp(
+        percent
+      )}%`;
   }
 }
 
@@ -478,18 +556,19 @@ function setWorkerUI(
 ============================================================ */
 
 function loadDemo() {
+
   if (!textEl) {
     return;
   }
 
   textEl.value =
-`Artificial intelligence is transforming modern society by changing how people communicate, work, learn, and make decisions. Recent advances in machine learning have allowed software systems to generate text, analyze images, summarize documents, write computer code, and assist with complex research tasks.
+`Artificial intelligence is transforming modern society by changing how people communicate, work, learn, and make decisions. Modern machine learning systems can generate text, summarize documents, analyze images, write computer code, and assist with complex research tasks.
 
-One major advantage of artificial intelligence is its ability to process information at a scale that would be difficult for humans to match. Organizations can use automated systems to identify patterns in large datasets, detect anomalies, and improve operational efficiency.
+One of the primary advantages of artificial intelligence is its ability to process information at a scale that would be difficult to achieve manually. Organizations can use automated tools to identify patterns, analyze large datasets, improve workflows, and support decision-making.
 
-However, artificial intelligence also introduces new challenges. Machine-generated content may contain factual errors, misleading statements, or fabricated information. As generated media becomes more realistic, determining the origin of digital content becomes increasingly difficult.
+However, artificial intelligence also creates important challenges. Generated content may contain inaccurate information, misleading claims, or fabricated details. As machine-generated material becomes increasingly convincing, understanding the origin of digital content becomes more difficult.
 
-Reliable AI detection therefore requires careful evaluation, transparent limitations, multiple independent signals, and conservative handling of uncertain evidence.`;
+Reliable AI detection therefore requires multiple sources of evidence, transparent limitations, continuous testing, and careful handling of uncertainty. A responsible detection system should avoid making strong claims when its underlying models disagree.`;
 
   updateCount();
 }
@@ -500,38 +579,67 @@ Reliable AI detection therefore requires careful evaluation, transparent limitat
 ============================================================ */
 
 function createProfile(value) {
+
   const words =
     value
       .trim()
       .split(/\s+/)
       .filter(Boolean);
 
+
   const sentences =
     value
-      .split(/[.!?]+/)
+      .split(
+        /[.!?]+/
+      )
       .map(
         sentence =>
           sentence.trim()
       )
       .filter(Boolean);
 
+
   const paragraphs =
     value
-      .split(/\n\s*\n/)
+      .split(
+        /\n\s*\n/
+      )
       .map(
         paragraph =>
           paragraph.trim()
       )
       .filter(Boolean);
 
+
   const lines =
     value
-      .split(/\n/)
+      .split(
+        /\n/
+      )
       .map(
         line =>
           line.trim()
       )
       .filter(Boolean);
+
+
+  const sentenceLengths =
+    sentences.map(
+      sentence =>
+        wordCount(
+          sentence
+        )
+    );
+
+
+  const paragraphLengths =
+    paragraphs.map(
+      paragraph =>
+        wordCount(
+          paragraph
+        )
+    );
+
 
   const cleanedWords =
     words
@@ -546,31 +654,18 @@ function createProfile(value) {
       )
       .filter(Boolean);
 
-  const sentenceLengths =
-    sentences.map(
-      sentence =>
-        wordCount(
-          sentence
-        )
-    );
-
-  const paragraphLengths =
-    paragraphs.map(
-      paragraph =>
-        wordCount(
-          paragraph
-        )
-    );
 
   const averageSentenceLength =
     average(
       sentenceLengths
     );
 
+
   const sentenceDeviation =
     standardDeviation(
       sentenceLengths
     );
+
 
   const punctuationTypes =
     [
@@ -591,11 +686,13 @@ function createProfile(value) {
       )
       .length;
 
+
   const quoteCount =
     countMatches(
       value,
       /["“”‘’]/g
     );
+
 
   const firstPerson =
     countMatches(
@@ -603,30 +700,44 @@ function createProfile(value) {
       /\b(I|me|my|mine|we|us|our|ours)\b/gi
     );
 
+
   const contractions =
     countMatches(
       value,
       /\b\w+(?:n't|'re|'ve|'ll|'d|'m|'s)\b/gi
     );
 
+
   const transitions =
     countMatches(
       value,
-      /\b(however|moreover|furthermore|therefore|overall|ultimately|consequently|additionally|nevertheless|in conclusion|as a result)\b/gi
+      /\b(however|moreover|furthermore|therefore|overall|ultimately|consequently|additionally|nevertheless|in conclusion|as a result|on the other hand)\b/gi
     );
+
+
+  const subjectiveMarkers =
+    countMatches(
+      value,
+      /\b(I think|I believe|I remember|I feel|perhaps|maybe|in my view|it seems to me)\b/gi
+    );
+
 
   const dialogueLines =
     lines.filter(
       line =>
-        /^[“"'—-]/.test(
-          line
-        ) ||
-        /[”"']$/.test(
-          line
-        )
+        /^[“"'—-]/
+          .test(
+            line
+          ) ||
+        /[”"']$/
+          .test(
+            line
+          )
     ).length;
 
+
   return {
+
     words:
       words.length,
 
@@ -673,6 +784,8 @@ function createProfile(value) {
 
     transitions,
 
+    subjectiveMarkers,
+
     dialogueLines,
 
     averageLineLength:
@@ -692,39 +805,51 @@ function estimateDomain(
   value,
   profile
 ) {
+
   const content =
     value.toLowerCase();
 
+
   const signals = {
+
     books:
-      profile.quoteCount >= 5 ||
-      profile.dialogueLines >= 2
+      (
+        profile.quoteCount >= 5 ||
+        profile.dialogueLines >= 2
+      )
         ? 5
         : 0,
 
+
     poetry:
-      profile.lines >= 7 &&
-      profile.averageLineLength < 65
+      (
+        profile.lines >= 7 &&
+        profile.averageLineLength < 65
+      )
         ? 5
         : 0,
+
 
     academic:
       countMatches(
         content,
-        /\b(method|methodology|results|participants|dataset|experiment|analysis|hypothesis|significant|research|abstract|conclusion)\b/g
+        /\b(method|methodology|results|participants|dataset|experiment|analysis|hypothesis|significant|research|abstract|conclusion|findings)\b/g
       ),
+
 
     news:
       countMatches(
         content,
-        /\b(reuters|reported|officials|government|minister|president|announced|agency|according to)\b/g
+        /\b(reuters|reported|officials|government|minister|president|announced|agency|according to|spokesperson)\b/g
       ),
+
 
     reviews:
       countMatches(
         content,
-        /\b(review|rating|stars|recommend|purchase|product|quality|price)\b/g
+        /\b(review|rating|stars|recommend|purchase|product|quality|price|customer|experience)\b/g
       ),
+
 
     social:
       countMatches(
@@ -732,35 +857,53 @@ function estimateDomain(
         /\b(imo|lol|reddit|subreddit|tldr|edit:|upvote|downvote|thread)\b/g
       ),
 
+
     recipe:
       countMatches(
         content,
-        /\b(cup|tablespoon|teaspoon|ingredients|oven|bake|stir|chop|minutes|serve)\b/g
+        /\b(cup|tablespoon|teaspoon|ingredients|oven|bake|stir|chop|minutes|serve|flour|sugar)\b/g
+      ),
+
+
+    memoir:
+      countMatches(
+        content,
+        /\b(I remember|my childhood|my father|my mother|when I was|years ago|my family|I grew up)\b/g
       )
   };
+
 
   const sorted =
     Object.entries(
       signals
     )
       .sort(
-        (a, b) =>
-          b[1] - a[1]
+        (
+          a,
+          b
+        ) =>
+          b[1] -
+          a[1]
       );
+
 
   const [
     domain,
     score
   ] =
-    sorted[0] || [
+    sorted[0] ||
+    [
       'general',
       0
     ];
 
+
   if (
     score < 2
   ) {
+
     return {
+
       domain:
         'general',
 
@@ -769,7 +912,9 @@ function estimateDomain(
     };
   }
 
+
   return {
+
     domain,
 
     confidence:
@@ -790,13 +935,17 @@ function humanEvidence(
   profile,
   domain
 ) {
+
   let score = 0;
 
   const reasons = [];
 
+
   if (
-    profile.sentenceBurstiness >= 0.70
+    profile.sentenceBurstiness >=
+    0.70
   ) {
+
     score += 20;
 
     reasons.push(
@@ -804,8 +953,10 @@ function humanEvidence(
     );
 
   } else if (
-    profile.sentenceBurstiness >= 0.45
+    profile.sentenceBurstiness >=
+    0.45
   ) {
+
     score += 12;
 
     reasons.push(
@@ -813,9 +964,12 @@ function humanEvidence(
     );
   }
 
+
   if (
-    profile.punctuationTypes >= 5
+    profile.punctuationTypes >=
+    5
   ) {
+
     score += 12;
 
     reasons.push(
@@ -823,14 +977,21 @@ function humanEvidence(
     );
 
   } else if (
-    profile.punctuationTypes >= 3
+    profile.punctuationTypes >=
+    3
   ) {
+
     score += 6;
   }
 
+
   if (
-    profile.firstPerson >= 4
+    profile.firstPerson >=
+    4 ||
+    profile.subjectiveMarkers >=
+    2
   ) {
+
     score += 10;
 
     reasons.push(
@@ -840,12 +1001,16 @@ function humanEvidence(
   } else if (
     profile.firstPerson > 0
   ) {
+
     score += 5;
   }
 
+
   if (
-    profile.contractions >= 3
+    profile.contractions >=
+    3
   ) {
+
     score += 8;
 
     reasons.push(
@@ -853,10 +1018,14 @@ function humanEvidence(
     );
   }
 
+
   if (
-    profile.quoteCount >= 6 ||
-    profile.dialogueLines >= 2
+    profile.quoteCount >=
+    6 ||
+    profile.dialogueLines >=
+    2
   ) {
+
     score += 14;
 
     reasons.push(
@@ -864,10 +1033,14 @@ function humanEvidence(
     );
   }
 
+
   if (
-    profile.paragraphDeviation >= 18 &&
-    profile.paragraphs >= 3
+    profile.paragraphDeviation >=
+    18 &&
+    profile.paragraphs >=
+    3
   ) {
+
     score += 8;
 
     reasons.push(
@@ -875,16 +1048,21 @@ function humanEvidence(
     );
   }
 
+
   if (
-    profile.transitions >= 4
+    profile.transitions >=
+    4
   ) {
+
     score -= 6;
   }
+
 
   if (
     domain === 'books' ||
     domain === 'poetry'
   ) {
+
     score += 10;
 
     reasons.push(
@@ -892,7 +1070,9 @@ function humanEvidence(
     );
   }
 
+
   return {
+
     score:
       clamp(
         Math.round(
@@ -900,7 +1080,12 @@ function humanEvidence(
         )
       ),
 
-    reasons
+    reasons:
+      [
+        ...new Set(
+          reasons
+        )
+      ]
   };
 }
 
@@ -913,19 +1098,26 @@ function chunkText(
   value,
   maxChars = 1300
 ) {
+
   const sentences =
     value.match(
       /[^.!?]+[.!?]+|[^.!?]+$/g
-    ) || [value];
+    ) ||
+    [
+      value
+    ];
+
 
   const chunks = [];
 
   let current = '';
 
+
   for (
     const sentence
     of sentences
   ) {
+
     if (
       (
         current +
@@ -934,6 +1126,7 @@ function chunkText(
         maxChars &&
       current
     ) {
+
       chunks.push(
         current.trim()
       );
@@ -942,18 +1135,22 @@ function chunkText(
         sentence;
 
     } else {
+
       current +=
         sentence;
     }
   }
 
+
   if (
     current.trim()
   ) {
+
     chunks.push(
       current.trim()
     );
   }
+
 
   return chunks
     .filter(Boolean)
@@ -969,20 +1166,25 @@ function chunkText(
 ============================================================ */
 
 async function loadTMR() {
+
   if (
     tmrModel
   ) {
+
     return tmrModel;
   }
+
 
   setState(
     'Loading TMR…'
   );
 
+
   setProgress(
     8,
     'Loading detector A…'
   );
+
 
   tmrModel =
     await pipeline(
@@ -994,25 +1196,31 @@ async function loadTMR() {
       }
     );
 
+
   return tmrModel;
 }
 
 
 async function loadE5() {
+
   if (
     e5Model
   ) {
+
     return e5Model;
   }
+
 
   setState(
     'Loading E5-small…'
   );
 
+
   setProgress(
     18,
     'Loading detector B…'
   );
+
 
   e5Model =
     await pipeline(
@@ -1024,25 +1232,31 @@ async function loadE5() {
       }
     );
 
+
   return e5Model;
 }
 
 
 async function loadModern() {
+
   if (
     modernModel
   ) {
+
     return modernModel;
   }
+
 
   setState(
     'Loading ModernBERT…'
   );
 
+
   setProgress(
     70,
     'Loading detector C…'
   );
+
 
   modernModel =
     await pipeline(
@@ -1053,6 +1267,7 @@ async function loadModern() {
           'q4f16'
       }
     );
+
 
   return modernModel;
 }
@@ -1065,48 +1280,67 @@ async function loadModern() {
 function aiProbability(
   output
 ) {
+
   const results =
     (
       Array.isArray(
         output
       )
         ? output
-        : [output]
+        : [
+            output
+          ]
     ).flat();
+
 
   let ai = null;
   let human = null;
+
 
   for (
     const item
     of results
   ) {
+
     const label =
       String(
         item?.label ||
         ''
       )
-        .toLowerCase();
+        .toLowerCase()
+        .trim();
+
 
     const score =
       Number(
         item?.score
       );
 
+
     if (
       !Number.isFinite(
         score
       )
     ) {
+
       continue;
     }
 
+
     if (
-      label.includes('ai') ||
-      label.includes('machine') ||
-      label.includes('generated') ||
-      label === 'label_1'
+      label.includes(
+        'ai'
+      ) ||
+      label.includes(
+        'machine'
+      ) ||
+      label.includes(
+        'generated'
+      ) ||
+      label ===
+        'label_1'
     ) {
+
       ai =
         Math.max(
           ai ?? 0,
@@ -1114,10 +1348,15 @@ function aiProbability(
         );
     }
 
+
     if (
-      label.includes('human') ||
-      label === 'label_0'
+      label.includes(
+        'human'
+      ) ||
+      label ===
+        'label_0'
     ) {
+
       human =
         Math.max(
           human ?? 0,
@@ -1126,26 +1365,59 @@ function aiProbability(
     }
   }
 
+
   if (
     ai !== null
   ) {
-    return ai;
+
+    return clamp(
+      ai,
+      0,
+      1
+    );
   }
+
 
   if (
     human !== null
   ) {
-    return 1 - human;
-  }
 
-  if (
-    results.length >= 2
-  ) {
-    return Number(
-      results[1]?.score ??
-      0.5
+    return clamp(
+      1 -
+      human,
+      0,
+      1
     );
   }
+
+
+  if (
+    results.length >=
+    2
+  ) {
+
+    const second =
+      Number(
+        results[
+          1
+        ]?.score
+      );
+
+
+    if (
+      Number.isFinite(
+        second
+      )
+    ) {
+
+      return clamp(
+        second,
+        0,
+        1
+      );
+    }
+  }
+
 
   return 0.5;
 }
@@ -1155,6 +1427,7 @@ async function classify(
   model,
   value
 ) {
+
   const output =
     await model(
       value,
@@ -1167,10 +1440,12 @@ async function classify(
       }
     );
 
+
   return Math.round(
     aiProbability(
       output
-    ) * 100
+    ) *
+    100
   );
 }
 
@@ -1182,9 +1457,11 @@ async function classify(
 function normalizeBenchmarkRecord(
   record
 ) {
+
   if (!record) {
     return null;
   }
+
 
   const truth =
     String(
@@ -1195,7 +1472,9 @@ function normalizeBenchmarkRecord(
       .trim()
       .toUpperCase();
 
+
   return {
+
     ...record,
 
     truth,
@@ -1213,20 +1492,25 @@ function normalizeBenchmarkRecord(
 
 
 /* ============================================================
-   BENCHMARK MIGRATION
+   BENCHMARK LOAD + MIGRATION
 ============================================================ */
 
 function loadBench() {
+
   const current =
     loadJSON(
       BENCH_KEY,
       []
     );
 
+
   if (
-    Array.isArray(current) &&
+    Array.isArray(
+      current
+    ) &&
     current.length
   ) {
+
     return current
       .map(
         normalizeBenchmarkRecord
@@ -1234,20 +1518,26 @@ function loadBench() {
       .filter(Boolean);
   }
 
+
   for (
-    const key
+    const legacyKey
     of LEGACY_BENCH_KEYS
   ) {
+
     const legacy =
       loadJSON(
-        key,
+        legacyKey,
         []
       );
 
+
     if (
-      Array.isArray(legacy) &&
+      Array.isArray(
+        legacy
+      ) &&
       legacy.length
     ) {
+
       const normalized =
         legacy
           .map(
@@ -1255,20 +1545,31 @@ function loadBench() {
           )
           .filter(Boolean);
 
+
       saveJSON(
         BENCH_KEY,
         normalized
       );
 
+
+      console.info(
+        `AI Trace V6.6 migrated benchmark from ${legacyKey}`
+      );
+
+
       return normalized;
     }
   }
+
 
   return [];
 }
 
 
-function saveBench(records) {
+function saveBench(
+  records
+) {
+
   return saveJSON(
     BENCH_KEY,
     records
@@ -1277,31 +1578,730 @@ function saveBench(records) {
 
 
 /* ============================================================
-   BINARY BENCHMARK RECORDS
+   BINARY RECORDS
 ============================================================ */
 
 function binaryRecords(
   records = loadBench()
 ) {
+
   return records.filter(
     record =>
-      record.truth === 'AI' ||
-      record.truth === 'HUMAN'
+      record.truth ===
+        'AI' ||
+      record.truth ===
+        'HUMAN'
   );
 }
 
 
 /* ============================================================
-   BENCHMARK PREDICTION
+   CALIBRATION QUEUE LOAD + MIGRATION
+============================================================ */
+
+function loadCalibrationQueue() {
+
+  const current =
+    loadJSON(
+      QUEUE_KEY,
+      []
+    );
+
+
+  if (
+    Array.isArray(
+      current
+    ) &&
+    current.length
+  ) {
+
+    return current;
+  }
+
+
+  for (
+    const legacyKey
+    of LEGACY_QUEUE_KEYS
+  ) {
+
+    const legacy =
+      loadJSON(
+        legacyKey,
+        []
+      );
+
+
+    if (
+      Array.isArray(
+        legacy
+      ) &&
+      legacy.length
+    ) {
+
+      saveJSON(
+        QUEUE_KEY,
+        legacy
+      );
+
+
+      console.info(
+        `AI Trace V6.6 migrated queue from ${legacyKey}`
+      );
+
+
+      return legacy;
+    }
+  }
+
+
+  return [];
+}
+
+
+function saveCalibrationQueue(
+  queue
+) {
+
+  return saveJSON(
+    QUEUE_KEY,
+    queue
+  );
+}
+
+
+/* ============================================================
+   DATASET ITEM NORMALIZATION
+============================================================ */
+
+function normalizeDatasetItem(
+  item,
+  index = 0
+) {
+
+  if (
+    !item ||
+    typeof item !==
+    'object'
+  ) {
+
+    throw new Error(
+      `Sample ${index + 1}: invalid object`
+    );
+  }
+
+
+  const truth =
+    String(
+      item.truth ||
+      item.label ||
+      item.groundTruth ||
+      ''
+    )
+      .trim()
+      .toUpperCase();
+
+
+  if (
+    ![
+      'AI',
+      'HUMAN',
+      'MIXED',
+      'UNKNOWN'
+    ].includes(
+      truth
+    )
+  ) {
+
+    throw new Error(
+      `Sample ${index + 1}: invalid truth label`
+    );
+  }
+
+
+  const sampleText =
+    String(
+      item.text ||
+      item.content ||
+      ''
+    )
+      .trim();
+
+
+  if (
+    wordCount(
+      sampleText
+    ) < 30
+  ) {
+
+    throw new Error(
+      `Sample ${index + 1}: text must contain at least 30 words`
+    );
+  }
+
+
+  return {
+
+    truth,
+
+    source:
+      String(
+        item.source ||
+        item.origin ||
+        ''
+      ).trim(),
+
+    domain:
+      String(
+        item.domain ||
+        'auto'
+      )
+        .trim()
+        .toLowerCase(),
+
+    text:
+      sampleText
+  };
+}
+
+
+/* ============================================================
+   JSONL PARSER
+============================================================ */
+
+function parseJSONL(
+  raw
+) {
+
+  const lines =
+    String(
+      raw ||
+      ''
+    )
+      .split(
+        /\r?\n/
+      )
+      .map(
+        line =>
+          line.trim()
+      )
+      .filter(Boolean);
+
+
+  const samples = [];
+  const errors = [];
+
+
+  lines.forEach(
+    (
+      line,
+      index
+    ) => {
+
+      try {
+
+        const parsed =
+          JSON.parse(
+            line
+          );
+
+
+        samples.push(
+          normalizeDatasetItem(
+            parsed,
+            index
+          )
+        );
+
+      } catch (error) {
+
+        errors.push(
+          `Line ${index + 1}: ${error.message}`
+        );
+      }
+    }
+  );
+
+
+  return {
+
+    samples,
+
+    errors,
+
+    format:
+      'JSONL'
+  };
+}
+
+
+/* ============================================================
+   JSON DATASET PARSER
+============================================================ */
+
+function parseJSONDataset(
+  raw
+) {
+
+  let parsed;
+
+
+  try {
+
+    parsed =
+      JSON.parse(
+        raw
+      );
+
+  } catch (error) {
+
+    return {
+
+      samples:
+        [],
+
+      errors:
+        [
+          `JSON parse error: ${error.message}`
+        ],
+
+      format:
+        'JSON'
+    };
+  }
+
+
+  let rows = [];
+
+
+  if (
+    Array.isArray(
+      parsed
+    )
+  ) {
+
+    rows =
+      parsed;
+
+  } else if (
+    Array.isArray(
+      parsed.samples
+    )
+  ) {
+
+    rows =
+      parsed.samples;
+
+  } else if (
+    Array.isArray(
+      parsed.records
+    )
+  ) {
+
+    rows =
+      parsed.records;
+
+  } else if (
+    Array.isArray(
+      parsed.data
+    )
+  ) {
+
+    rows =
+      parsed.data;
+
+  } else {
+
+    return {
+
+      samples:
+        [],
+
+      errors:
+        [
+          'JSON must be an array or contain samples, records or data array.'
+        ],
+
+      format:
+        'JSON'
+    };
+  }
+
+
+  const samples = [];
+  const errors = [];
+
+
+  rows.forEach(
+    (
+      item,
+      index
+    ) => {
+
+      try {
+
+        samples.push(
+          normalizeDatasetItem(
+            item,
+            index
+          )
+        );
+
+      } catch (error) {
+
+        errors.push(
+          error.message
+        );
+      }
+    }
+  );
+
+
+  return {
+
+    samples,
+
+    errors,
+
+    format:
+      'JSON'
+  };
+}
+
+
+/* ============================================================
+   TXT DATASET PARSER
+============================================================ */
+
+function parsePlainTextDataset(
+  raw
+) {
+
+  /*
+    TXT is accepted only when it is actually JSONL-style
+    data saved with .txt extension.
+
+    We intentionally do not guess truth labels from ordinary
+    prose files because ground truth must remain explicit.
+  */
+
+  return parseJSONL(
+    raw
+  );
+}
+
+
+/* ============================================================
+   AUTO DATASET PARSER
+============================================================ */
+
+function parseDatasetContent(
+  raw,
+  fileName = ''
+) {
+
+  const name =
+    String(
+      fileName ||
+      ''
+    )
+      .toLowerCase();
+
+
+  if (
+    name.endsWith(
+      '.json'
+    )
+  ) {
+
+    return parseJSONDataset(
+      raw
+    );
+  }
+
+
+  if (
+    name.endsWith(
+      '.jsonl'
+    ) ||
+    name.endsWith(
+      '.txt'
+    )
+  ) {
+
+    return parseJSONL(
+      raw
+    );
+  }
+
+
+  /*
+    Paste importer:
+    first attempt JSONL.
+
+    If there is a single JSON array, fall back to JSON.
+  */
+
+  const jsonl =
+    parseJSONL(
+      raw
+    );
+
+
+  if (
+    jsonl.samples.length &&
+    !jsonl.errors.length
+  ) {
+
+    return jsonl;
+  }
+
+
+  const json =
+    parseJSONDataset(
+      raw
+    );
+
+
+  if (
+    json.samples.length
+  ) {
+
+    return json;
+  }
+
+
+  return jsonl;
+}
+
+
+/* ============================================================
+   IMPORT STATISTICS
+============================================================ */
+
+function importStatistics(
+  parsed
+) {
+
+  const samples =
+    parsed?.samples ||
+    [];
+
+
+  return {
+
+    valid:
+      samples.length,
+
+    invalid:
+      parsed?.errors
+        ?.length ||
+      0,
+
+    ai:
+      samples.filter(
+        item =>
+          item.truth ===
+          'AI'
+      ).length,
+
+    human:
+      samples.filter(
+        item =>
+          item.truth ===
+          'HUMAN'
+      ).length,
+
+    mixed:
+      samples.filter(
+        item =>
+          item.truth ===
+          'MIXED'
+      ).length,
+
+    unknown:
+      samples.filter(
+        item =>
+          item.truth ===
+          'UNKNOWN'
+      ).length
+  };
+}
+
+
+/* ============================================================
+   IMPORT PREVIEW UI
+============================================================ */
+
+function renderImportPreview(
+  parsed
+) {
+
+  const stats =
+    importStatistics(
+      parsed
+    );
+
+
+  const values = {
+
+    importValidCount:
+      stats.valid,
+
+    importInvalidCount:
+      stats.invalid,
+
+    importAICount:
+      stats.ai,
+
+    importHumanCount:
+      stats.human,
+
+    importMixedCount:
+      stats.mixed,
+
+    importUnknownCount:
+      stats.unknown
+  };
+
+
+  for (
+    const [
+      id,
+      value
+    ]
+    of Object.entries(
+      values
+    )
+  ) {
+
+    if ($(id)) {
+
+      $(id)
+        .textContent =
+        value;
+    }
+  }
+
+
+  if (
+    $('bulkImportCount')
+  ) {
+
+    $('bulkImportCount')
+      .textContent =
+      `${stats.valid} samples detected`;
+  }
+}
+
+
+/* ============================================================
+   FILE INFORMATION UI
+============================================================ */
+
+function renderDatasetFileInfo({
+  name = 'No file selected',
+  status = 'READY',
+  message = 'Select a JSONL, JSON or TXT benchmark dataset.'
+} = {}) {
+
+  if (
+    !$('datasetFileInfo')
+  ) {
+
+    return;
+  }
+
+
+  $('datasetFileInfo').innerHTML = `
+
+<div class="ev">
+
+  <div class="evTop">
+
+    <span>
+      ${escapeHTML(
+        name
+      )}
+    </span>
+
+    <span>
+      ${escapeHTML(
+        status
+      )}
+    </span>
+
+  </div>
+
+  <small>
+    ${escapeHTML(
+      message
+    )}
+  </small>
+
+</div>
+
+`;
+}
+/* ============================================================
+   DETECTOR PREDICTION
+============================================================ */
+
+function detectorPrediction(
+  record,
+  detector
+) {
+
+  const score =
+    Number(
+      record?.scores?.[
+        detector
+      ]
+    );
+
+
+  if (
+    !Number.isFinite(
+      score
+    )
+  ) {
+
+    return 'ABSTAIN';
+  }
+
+
+  if (
+    score >= 70
+  ) {
+
+    return 'AI';
+  }
+
+
+  if (
+    score <= 30
+  ) {
+
+    return 'HUMAN';
+  }
+
+
+  return 'ABSTAIN';
+}
+
+
+/* ============================================================
+   FINAL BENCHMARK PREDICTION
 ============================================================ */
 
 function benchmarkPrediction(
   record
 ) {
+
   const verdict =
     record?.consensus
       ?.verdict ||
     '';
+
 
   if (
     verdict ===
@@ -1309,8 +2309,10 @@ function benchmarkPrediction(
     verdict ===
       'Likely AI'
   ) {
+
     return 'AI';
   }
+
 
   if (
     verdict ===
@@ -1318,21 +2320,24 @@ function benchmarkPrediction(
     verdict ===
       'Likely human'
   ) {
+
     return 'HUMAN';
   }
+
 
   return 'ABSTAIN';
 }
 
 
 /* ============================================================
-   GENERIC METRICS
+   METRIC EVALUATION
 ============================================================ */
 
 function evaluatePredictions(
   rows,
   getPrediction
 ) {
+
   let TP = 0;
   let TN = 0;
   let FP = 0;
@@ -1341,73 +2346,102 @@ function evaluatePredictions(
   let aiAbstain = 0;
   let humanAbstain = 0;
 
+
   for (
     const row
     of rows
   ) {
-    const predicted =
+
+    const prediction =
       getPrediction(
         row
       );
 
+
     if (
-      predicted ===
+      prediction ===
       'ABSTAIN'
     ) {
+
       if (
-        row.truth === 'AI'
+        row.truth ===
+        'AI'
       ) {
+
         aiAbstain++;
 
       } else if (
-        row.truth === 'HUMAN'
+        row.truth ===
+        'HUMAN'
       ) {
+
         humanAbstain++;
       }
 
       continue;
     }
 
+
     if (
-      row.truth === 'AI' &&
-      predicted === 'AI'
+      row.truth ===
+        'AI' &&
+      prediction ===
+        'AI'
     ) {
+
       TP++;
     }
 
+
     if (
-      row.truth === 'HUMAN' &&
-      predicted === 'HUMAN'
+      row.truth ===
+        'HUMAN' &&
+      prediction ===
+        'HUMAN'
     ) {
+
       TN++;
     }
 
+
     if (
-      row.truth === 'HUMAN' &&
-      predicted === 'AI'
+      row.truth ===
+        'HUMAN' &&
+      prediction ===
+        'AI'
     ) {
+
       FP++;
     }
 
+
     if (
-      row.truth === 'AI' &&
-      predicted === 'HUMAN'
+      row.truth ===
+        'AI' &&
+      prediction ===
+        'HUMAN'
     ) {
+
       FN++;
     }
   }
 
+
   const totalAI =
     rows.filter(
       row =>
-        row.truth === 'AI'
+        row.truth ===
+        'AI'
     ).length;
+
 
   const totalHuman =
     rows.filter(
       row =>
-        row.truth === 'HUMAN'
+        row.truth ===
+        'HUMAN'
     ).length;
+
 
   const decided =
     TP +
@@ -1415,7 +2449,9 @@ function evaluatePredictions(
     FP +
     FN;
 
+
   return {
+
     total:
       rows.length,
 
@@ -1432,6 +2468,10 @@ function evaluatePredictions(
 
     aiAbstain,
     humanAbstain,
+
+    abstentions:
+      aiAbstain +
+      humanAbstain,
 
     coverage:
       percentage(
@@ -1491,55 +2531,26 @@ function evaluatePredictions(
 
 
 /* ============================================================
-   DETECTOR PREDICTION
-============================================================ */
-
-function detectorPrediction(
-  record,
-  detector
-) {
-  const score =
-    Number(
-      record.scores?.[
-        detector
-      ]
-    );
-
-  if (
-    !Number.isFinite(score)
-  ) {
-    return 'ABSTAIN';
-  }
-
-  if (
-    score >= 70
-  ) {
-    return 'AI';
-  }
-
-  if (
-    score <= 30
-  ) {
-    return 'HUMAN';
-  }
-
-  return 'ABSTAIN';
-}
-/* ============================================================
-   LEAVE-ONE-OUT SUPPORT
+   LEAVE-ONE-OUT
 ============================================================ */
 
 function leaveOneOutRecords(
   records,
-  excludeId
+  excludeId = null
 ) {
-  if (!excludeId) {
+
+  if (
+    !excludeId
+  ) {
+
     return records;
   }
 
+
   return records.filter(
     record =>
-      record.id !== excludeId
+      record.id !==
+      excludeId
   );
 }
 
@@ -1554,7 +2565,8 @@ function detectorReliabilityMetrics(
   records,
   excludeId = null
 ) {
-  const clean =
+
+  const cleanRows =
     leaveOneOutRecords(
       binaryRecords(
         records
@@ -1562,8 +2574,9 @@ function detectorReliabilityMetrics(
       excludeId
     );
 
+
   const globalRows =
-    clean.filter(
+    cleanRows.filter(
       record =>
         Number.isFinite(
           Number(
@@ -1574,6 +2587,7 @@ function detectorReliabilityMetrics(
         )
     );
 
+
   const domainRows =
     globalRows.filter(
       record =>
@@ -1582,6 +2596,7 @@ function detectorReliabilityMetrics(
           'general'
         ) === domain
     );
+
 
   const globalMetrics =
     evaluatePredictions(
@@ -1593,6 +2608,7 @@ function detectorReliabilityMetrics(
         )
     );
 
+
   const domainMetrics =
     evaluatePredictions(
       domainRows,
@@ -1603,10 +2619,15 @@ function detectorReliabilityMetrics(
         )
     );
 
+
   return {
+
     globalRows,
+
     domainRows,
+
     globalMetrics,
+
     domainMetrics
   };
 }
@@ -1620,33 +2641,40 @@ function calculateReliabilityWeight(
   metrics,
   sampleCount
 ) {
+
   /*
-    Small datasets remain close to neutral.
+    Small datasets remain neutral.
   */
 
   if (
     sampleCount < 20
   ) {
+
     return 1;
   }
+
 
   const accuracy =
     metrics.selectiveAccuracy /
     100;
 
+
   const coverage =
     metrics.coverage /
     100;
+
 
   const fprSafety =
     1 -
     metrics.fpr /
     100;
 
+
   const fnrSafety =
     1 -
     metrics.fnr /
     100;
+
 
   let score =
     accuracy * 0.42 +
@@ -1654,40 +2682,45 @@ function calculateReliabilityWeight(
     fprSafety * 0.29 +
     fnrSafety * 0.15;
 
+
   /*
-    Safety penalty:
-    false positives matter a lot for AI detection.
+    High false-positive rates are especially dangerous
+    in AI attribution, so they receive an extra penalty.
   */
 
   if (
     metrics.fpr >= 40
   ) {
+
     score *= 0.75;
   }
+
 
   if (
     metrics.fpr >= 70
   ) {
+
     score *= 0.60;
   }
 
-  /*
-    Reliability only gradually gains influence.
-  */
 
   const maturity =
     clamp(
-      sampleCount / 120,
+      sampleCount /
+      120,
       0,
       1
     );
+
 
   const softened =
     1 +
     (
       score -
       1
-    ) * maturity;
+    ) *
+    maturity;
+
 
   return clamp(
     softened,
@@ -1708,6 +2741,7 @@ function directionalReliability(
   records,
   excludeId = null
 ) {
+
   const stats =
     detectorReliabilityMetrics(
       detector,
@@ -1716,43 +2750,53 @@ function directionalReliability(
       excludeId
     );
 
-  const globalRows =
-    stats.globalRows;
 
-  const domainRows =
-    stats.domainRows;
+  function evaluateDirection(
+    rows
+  ) {
 
-  function evaluateDirection(rows) {
     let predictions = 0;
     let correct = 0;
+
 
     for (
       const record
       of rows
     ) {
+
       const predicted =
         detectorPrediction(
           record,
           detector
         );
 
+
       if (
-        predicted !== direction
+        predicted !==
+        direction
       ) {
+
         continue;
       }
 
+
       predictions++;
 
+
       if (
-        record.truth === direction
+        record.truth ===
+        direction
       ) {
+
         correct++;
       }
     }
 
+
     return {
+
       predictions,
+
       correct,
 
       accuracy:
@@ -1763,27 +2807,34 @@ function directionalReliability(
     };
   }
 
+
   const global =
     evaluateDirection(
-      globalRows
+      stats.globalRows
     );
+
 
   const domainSpecific =
     evaluateDirection(
-      domainRows
+      stats.domainRows
     );
+
 
   const globalReady =
     global.predictions >= 10;
 
+
   const domainReady =
     domainSpecific.predictions >= 6;
 
+
   let weight = 1;
+
 
   if (
     globalReady
   ) {
+
     weight =
       clamp(
         global.accuracy /
@@ -1793,10 +2844,12 @@ function directionalReliability(
       );
   }
 
+
   if (
     globalReady &&
     domainReady
   ) {
+
     weight =
       weight * 0.45 +
       clamp(
@@ -1807,7 +2860,9 @@ function directionalReliability(
       ) * 0.55;
   }
 
+
   return {
+
     ready:
       globalReady ||
       domainReady,
@@ -1818,9 +2873,10 @@ function directionalReliability(
           weight,
           0.20,
           1.05
-        ).toFixed(
-          3
         )
+          .toFixed(
+            3
+          )
       ),
 
     global,
@@ -1837,10 +2893,14 @@ function directionalReliability(
 
 function buildModelReliability(
   domain,
-  records = loadBench(),
-  excludeId = null
+  records =
+    loadBench(),
+  excludeId =
+    null
 ) {
+
   const result = {};
+
 
   for (
     const detector
@@ -1850,6 +2910,7 @@ function buildModelReliability(
       'modern'
     ]
   ) {
+
     const stats =
       detectorReliabilityMetrics(
         detector,
@@ -1858,16 +2919,16 @@ function buildModelReliability(
         excludeId
       );
 
-    const base =
-      calculateReliabilityWeight(
-        stats.globalMetrics,
-        stats.globalRows.length
-      );
 
     result[
       detector
     ] = {
-      base,
+
+      base:
+        calculateReliabilityWeight(
+          stats.globalMetrics,
+          stats.globalRows.length
+        ),
 
       global:
         {
@@ -1907,6 +2968,7 @@ function buildModelReliability(
     };
   }
 
+
   return result;
 }
 
@@ -1916,24 +2978,31 @@ function buildModelReliability(
 ============================================================ */
 
 function benchmarkReadiness(
-  records = loadBench()
+  records =
+    loadBench()
 ) {
+
   const rows =
     binaryRecords(
       records
     );
 
+
   const ai =
     rows.filter(
       record =>
-        record.truth === 'AI'
+        record.truth ===
+        'AI'
     ).length;
+
 
   const human =
     rows.filter(
       record =>
-        record.truth === 'HUMAN'
+        record.truth ===
+        'HUMAN'
     ).length;
+
 
   const domains =
     new Set(
@@ -1944,8 +3013,10 @@ function benchmarkReadiness(
       )
     ).size;
 
+
   let level =
     'COLLECTING';
+
 
   if (
     rows.length >= 250 &&
@@ -1953,6 +3024,7 @@ function benchmarkReadiness(
     human >= 100 &&
     domains >= 5
   ) {
+
     level =
       'STRONG';
 
@@ -1962,6 +3034,7 @@ function benchmarkReadiness(
     human >= 50 &&
     domains >= 4
   ) {
+
     level =
       'GOOD';
 
@@ -1971,6 +3044,7 @@ function benchmarkReadiness(
     human >= 20 &&
     domains >= 3
   ) {
+
     level =
       'EARLY';
 
@@ -1979,28 +3053,36 @@ function benchmarkReadiness(
     ai >= 8 &&
     human >= 8
   ) {
+
     level =
       'EXPERIMENTAL';
   }
 
+
   return {
+
     level,
+
     total:
       rows.length,
+
     ai,
+
     human,
+
     domains
   };
 }
 
 
 /* ============================================================
-   OUTLIER DETECTION
+   MODEL OUTLIER DETECTION
 ============================================================ */
 
 function detectModelOutlier(
   scores
 ) {
+
   const entries =
     Object.entries(
       scores
@@ -2009,18 +3091,22 @@ function detectModelOutlier(
         (
           [
             ,
-            value
+            score
           ]
         ) =>
           Number.isFinite(
-            value
+            score
           )
       );
 
+
   if (
-    entries.length < 3
+    entries.length <
+    3
   ) {
+
     return {
+
       detected:
         false,
 
@@ -2028,44 +3114,53 @@ function detectModelOutlier(
         null,
 
       distance:
-        0
+        0,
+
+      reference:
+        median(
+          entries.map(
+            item =>
+              item[
+                1
+              ]
+          )
+        )
     };
   }
 
-  const values =
-    entries.map(
-      (
-        [
-          ,
-          value
-        ]
-      ) =>
-        value
-    );
 
   const reference =
     median(
-      values
+      entries.map(
+        item =>
+          item[
+            1
+          ]
+      )
     );
 
-  const distances =
-    entries.map(
-      (
-        [
-          detector,
-          score
-        ]
-      ) => ({
-        detector,
-        score,
 
-        distance:
-          Math.abs(
-            score -
-            reference
-          )
-      })
-    )
+  const distances =
+    entries
+      .map(
+        (
+          [
+            detector,
+            score
+          ]
+        ) => ({
+
+          detector,
+
+          score,
+
+          distance:
+            Math.abs(
+              score -
+              reference
+            )
+        })
+      )
       .sort(
         (
           a,
@@ -2075,20 +3170,31 @@ function detectModelOutlier(
           a.distance
       );
 
+
   const first =
-    distances[0];
+    distances[
+      0
+    ];
+
 
   const second =
-    distances[1];
+    distances[
+      1
+    ];
+
 
   const detected =
-    first.distance >= 30 &&
+    first.distance >=
+      30 &&
     (
       first.distance -
       second.distance
-    ) >= 14;
+    ) >=
+      14;
+
 
   return {
+
     detected,
 
     detector:
@@ -2116,15 +3222,19 @@ function detectModelOutlier(
 function analyzeSegments(
   segmentScores
 ) {
+
   const valid =
     segmentScores.filter(
       Number.isFinite
     );
 
+
   if (
     !valid.length
   ) {
+
     return {
+
       mean:
         50,
 
@@ -2151,15 +3261,18 @@ function analyzeSegments(
     };
   }
 
+
   const mean =
     average(
       valid
     );
 
+
   const deviation =
     standardDeviation(
       valid
     );
+
 
   const range =
     Math.max(
@@ -2169,11 +3282,13 @@ function analyzeSegments(
       ...valid
     );
 
+
   const aiSegments =
     valid.filter(
       score =>
         score >= 70
     ).length;
+
 
   const humanSegments =
     valid.filter(
@@ -2181,34 +3296,47 @@ function analyzeSegments(
         score <= 30
     ).length;
 
+
   const uncertainSegments =
     valid.length -
     aiSegments -
     humanSegments;
 
+
   let stability =
     100;
+
 
   stability -=
     Math.min(
       45,
-      deviation * 1.25
+      deviation *
+      1.25
     );
+
 
   stability -=
     Math.min(
       35,
-      range * 0.35
+      range *
+      0.35
     );
 
+
   if (
-    aiSegments > 0 &&
-    humanSegments > 0
+    aiSegments >
+      0 &&
+    humanSegments >
+      0
   ) {
-    stability -= 10;
+
+    stability -=
+      10;
   }
 
+
   return {
+
     mean:
       Math.round(
         mean
@@ -2238,8 +3366,10 @@ function analyzeSegments(
     uncertainSegments,
 
     mixed:
-      aiSegments > 0 &&
-      humanSegments > 0
+      aiSegments >
+        0 &&
+      humanSegments >
+        0
   };
 }
 
@@ -2251,6 +3381,7 @@ function analyzeSegments(
 function calculateModelAgreement(
   scores
 ) {
+
   const values =
     Object.values(
       scores
@@ -2259,10 +3390,14 @@ function calculateModelAgreement(
         Number.isFinite
       );
 
+
   if (
-    values.length <= 1
+    values.length <=
+    1
   ) {
+
     return {
+
       active:
         values.length,
 
@@ -2277,6 +3412,7 @@ function calculateModelAgreement(
     };
   }
 
+
   const spread =
     Math.max(
       ...values
@@ -2285,21 +3421,27 @@ function calculateModelAgreement(
       ...values
     );
 
+
   const deviation =
     standardDeviation(
       values
     );
 
+
   const agreement =
     clamp(
       Math.round(
         100 -
-        spread * 1.10 -
-        deviation * 0.50
+        spread *
+        1.10 -
+        deviation *
+        0.50
       )
     );
 
+
   return {
+
     active:
       values.length,
 
@@ -2332,82 +3474,126 @@ function calculateEvidenceSufficiency({
   human,
   thirdUsed
 }) {
-  let score = 100;
+
+  let score =
+    100;
+
 
   if (
-    profile.words < 100
+    profile.words <
+    100
   ) {
-    score -= 30;
+
+    score -=
+      30;
 
   } else if (
-    profile.words < 150
+    profile.words <
+    150
   ) {
-    score -= 18;
+
+    score -=
+      18;
 
   } else if (
-    profile.words < 220
+    profile.words <
+    220
   ) {
-    score -= 8;
+
+    score -=
+      8;
   }
+
 
   if (
-    language !== 'English'
+    language !==
+    'English'
   ) {
-    score -= 35;
+
+    score -=
+      35;
   }
+
 
   if (
-    modelAgreement.active === 1
+    modelAgreement.active ===
+    1
   ) {
-    score -= 35;
+
+    score -=
+      35;
 
   } else if (
-    modelAgreement.active === 2
+    modelAgreement.active ===
+    2
   ) {
-    score -= 10;
+
+    score -=
+      10;
   }
+
 
   score -=
     Math.round(
       (
         100 -
         modelAgreement.agreement
-      ) * 0.35
+      ) *
+      0.35
     );
+
 
   score -=
     Math.round(
       (
         100 -
         segmentAnalysis.stability
-      ) * 0.20
+      ) *
+      0.20
     );
+
 
   if (
     outlier.detected
   ) {
-    score -= 5;
+
+    score -=
+      5;
   }
 
-  if (
-    domain === 'books' ||
-    domain === 'poetry'
-  ) {
-    score -= 10;
-  }
 
   if (
-    human.score >= 55
+    domain ===
+      'books' ||
+    domain ===
+      'poetry'
   ) {
-    score -= 5;
+
+    score -=
+      10;
   }
+
+
+  if (
+    human.score >=
+    55
+  ) {
+
+    score -=
+      5;
+  }
+
 
   if (
     thirdUsed &&
-    modelAgreement.active >= 3
+    modelAgreement.active >=
+      3
   ) {
-    score += 5;
+
+    score +=
+      5;
   }
+
 
   score =
     clamp(
@@ -2416,37 +3602,48 @@ function calculateEvidenceSufficiency({
       )
     );
 
+
   let level =
     'INSUFFICIENT';
 
+
   if (
-    score >= 75
+    score >=
+    75
   ) {
+
     level =
       'STRONG';
 
   } else if (
-    score >= 55
+    score >=
+    55
   ) {
+
     level =
       'MODERATE';
 
   } else if (
-    score >= 40
+    score >=
+    40
   ) {
+
     level =
       'WEAK';
   }
 
+
   return {
+
     score,
+
     level
   };
 }
 
 
 /* ============================================================
-   MODEL WEIGHT FOR CURRENT SCORE
+   CURRENT MODEL WEIGHT
 ============================================================ */
 
 function modelWeightForCurrentScore(
@@ -2455,38 +3652,44 @@ function modelWeightForCurrentScore(
   reliability,
   readiness
 ) {
+
   const profile =
     reliability?.[
       detector
     ];
 
-  if (!profile) {
+
+  if (
+    !profile
+  ) {
+
     return 1;
   }
+
 
   const direction =
     score >= 50
       ? 'ai'
       : 'human';
 
-  let weight =
-    (
-      profile.base * 0.68 +
-      (
-        profile[
-          direction
-        ]?.weight ??
-        1
-      ) * 0.32
-    );
 
-  /*
-    With tiny datasets weights remain very close to 1.
-  */
+  let weight =
+    profile.base *
+      0.68 +
+    (
+      profile[
+        direction
+      ]?.weight ??
+      1
+    ) *
+      0.32;
+
 
   if (
-    readiness.level === 'COLLECTING'
+    readiness.level ===
+    'COLLECTING'
   ) {
+
     weight =
       clamp(
         weight,
@@ -2495,9 +3698,12 @@ function modelWeightForCurrentScore(
       );
   }
 
+
   if (
-    readiness.level === 'EXPERIMENTAL'
+    readiness.level ===
+    'EXPERIMENTAL'
   ) {
+
     weight =
       clamp(
         weight,
@@ -2505,6 +3711,7 @@ function modelWeightForCurrentScore(
         1.15
       );
   }
+
 
   return clamp(
     weight,
@@ -2524,9 +3731,11 @@ function adaptiveModelSignal({
   readiness,
   outlier
 }) {
+
   const values = [];
   const weights = [];
   const details = {};
+
 
   for (
     const detector
@@ -2536,18 +3745,22 @@ function adaptiveModelSignal({
       'modern'
     ]
   ) {
+
     const score =
       scores[
         detector
       ];
+
 
     if (
       !Number.isFinite(
         score
       )
     ) {
+
       continue;
     }
+
 
     let weight =
       modelWeightForCurrentScore(
@@ -2557,12 +3770,17 @@ function adaptiveModelSignal({
         readiness
       );
 
+
     if (
       outlier.detected &&
-      outlier.detector === detector
+      outlier.detector ===
+        detector
     ) {
-      weight *= 0.45;
+
+      weight *=
+        0.45;
     }
+
 
     weight =
       clamp(
@@ -2571,70 +3789,97 @@ function adaptiveModelSignal({
         1.40
       );
 
+
     values.push(
       score
     );
+
 
     weights.push(
       weight
     );
 
+
     details[
       detector
     ] = {
+
       score,
 
       weight:
         Number(
-          weight.toFixed(
-            3
-          )
+          weight
+            .toFixed(
+              3
+            )
         ),
 
       outlier:
         outlier.detected &&
-        outlier.detector === detector
+        outlier.detector ===
+          detector
     };
   }
 
-  let weightedTotal = 0;
-  let weightTotal = 0;
+
+  let weightedTotal =
+    0;
+
+
+  let totalWeight =
+    0;
+
 
   for (
     let i = 0;
-    i < values.length;
+    i <
+    values.length;
     i++
   ) {
-    weightedTotal +=
-      values[i] *
-      weights[i];
 
-    weightTotal +=
-      weights[i];
+    weightedTotal +=
+      values[
+        i
+      ] *
+      weights[
+        i
+      ];
+
+
+    totalWeight +=
+      weights[
+        i
+      ];
   }
 
+
   const weighted =
-    weightTotal
+    totalWeight
       ? weightedTotal /
-        weightTotal
+        totalWeight
       : 50;
+
 
   const robustMedian =
     median(
       values
     );
 
+
   const signal =
-    Math.round(
-      weighted * 0.62 +
-      robustMedian * 0.38
+    clamp(
+      Math.round(
+        weighted *
+          0.62 +
+        robustMedian *
+          0.38
+      )
     );
 
+
   return {
-    signal:
-      clamp(
-        signal
-      ),
+
+    signal,
 
     weighted:
       Math.round(
@@ -2663,17 +3908,23 @@ function shouldUseThirdModel({
   words,
   language
 }) {
+
   if (
     isMobileDevice()
   ) {
+
     return false;
   }
 
+
   if (
-    language !== 'English'
+    language !==
+    'English'
   ) {
+
     return true;
   }
+
 
   if (
     !Number.isFinite(
@@ -2683,8 +3934,10 @@ function shouldUseThirdModel({
       scores.e5
     )
   ) {
+
     return true;
   }
+
 
   const gap =
     Math.abs(
@@ -2692,30 +3945,53 @@ function shouldUseThirdModel({
       scores.e5
     );
 
+
   const quickMedian =
-    median([
-      scores.tmr,
-      scores.e5
-    ]);
+    median(
+      [
+        scores.tmr,
+        scores.e5
+      ]
+    );
+
 
   const segment =
     analyzeSegments(
       segmentScores
     );
 
+
   return (
-    words < 180 ||
-    gap >= 18 ||
+
+    words <
+      180 ||
+
+    gap >=
+      18 ||
+
     (
-      quickMedian >= 30 &&
-      quickMedian <= 82
+      quickMedian >=
+        30 &&
+      quickMedian <=
+        82
     ) ||
-    segment.range >= 45 ||
-    segment.deviation >= 20 ||
+
+    segment.range >=
+      45 ||
+
+    segment.deviation >=
+      20 ||
+
     segment.mixed ||
-    human.score >= 40 ||
-    domain === 'books' ||
-    domain === 'poetry'
+
+    human.score >=
+      40 ||
+
+    domain ===
+      'books' ||
+
+    domain ===
+      'poetry'
   );
 }
 
@@ -2735,10 +4011,12 @@ function buildConsensus({
   benchmarkRecords,
   excludeBenchmarkId = null
 }) {
+
   const readiness =
     benchmarkReadiness(
       benchmarkRecords
     );
+
 
   const reliability =
     buildModelReliability(
@@ -2747,59 +4025,81 @@ function buildConsensus({
       excludeBenchmarkId
     );
 
+
   const outlier =
     detectModelOutlier(
       scores
     );
+
 
   const modelAgreement =
     calculateModelAgreement(
       scores
     );
 
+
   const segmentAnalysis =
     analyzeSegments(
       segmentScores
     );
 
+
   const adaptive =
     adaptiveModelSignal({
+
       scores,
+
       reliability,
+
       readiness,
+
       outlier
     });
+
 
   const raw =
     adaptive.signal;
 
+
   const sufficiency =
     calculateEvidenceSufficiency({
+
       profile,
+
       language,
+
       domain,
+
       modelAgreement,
+
       segmentAnalysis,
+
       outlier,
+
       human,
+
       thirdUsed
     });
+
 
   const disagreement =
     1 -
     modelAgreement.agreement /
     100;
 
+
   const humanPenalty =
     human.score *
     (
       0.08 +
-      disagreement * 0.34
+      disagreement *
+      0.34
     ) *
     (
       raw /
       100
     );
+
 
   let calibrated =
     clamp(
@@ -2809,18 +4109,26 @@ function buildConsensus({
       )
     );
 
+
   /*
-    Literary false-positive protection.
+    Literary-domain protection.
   */
 
   if (
     (
-      domain === 'books' ||
-      domain === 'poetry'
+      domain ===
+        'books' ||
+      domain ===
+        'poetry'
     ) &&
-    human.score >= 40 &&
-    modelAgreement.agreement < 55
+
+    human.score >=
+      40 &&
+
+    modelAgreement.agreement <
+      55
   ) {
+
     calibrated =
       Math.min(
         calibrated,
@@ -2828,128 +4136,223 @@ function buildConsensus({
       );
   }
 
+
   /*
-    Extreme score guard.
+    Extreme-score guard.
   */
 
   if (
-    calibrated >= 95 &&
+    calibrated >=
+      95 &&
+
     (
-      modelAgreement.spread > 18 ||
-      segmentAnalysis.range > 35 ||
-      sufficiency.score < 80
+      modelAgreement.spread >
+        18 ||
+
+      segmentAnalysis.range >
+        35 ||
+
+      sufficiency.score <
+        80
     )
   ) {
-    calibrated = 94;
+
+    calibrated =
+      94;
   }
 
+
   if (
-    calibrated <= 5 &&
+    calibrated <=
+      5 &&
+
     (
-      modelAgreement.spread > 18 ||
-      segmentAnalysis.range > 35 ||
-      sufficiency.score < 75
+      modelAgreement.spread >
+        18 ||
+
+      segmentAnalysis.range >
+        35 ||
+
+      sufficiency.score <
+        75
     )
   ) {
-    calibrated = 6;
+
+    calibrated =
+      6;
   }
+
 
   let verdict =
     'INCONCLUSIVE';
 
+
   const severeConflict =
-    modelAgreement.spread >= 70;
+    modelAgreement.spread >=
+      70;
+
 
   const highConflict =
-    modelAgreement.spread >= 45 ||
-    modelAgreement.agreement <= 30;
+    modelAgreement.spread >=
+      45 ||
+    modelAgreement.agreement <=
+      30;
+
 
   if (
-    language === 'English' &&
-    modelAgreement.active >= 2 &&
-    calibrated >= 86 &&
-    sufficiency.score >= 74 &&
-    modelAgreement.agreement >= 48 &&
+    language ===
+      'English' &&
+
+    modelAgreement.active >=
+      2 &&
+
+    calibrated >=
+      86 &&
+
+    sufficiency.score >=
+      74 &&
+
+    modelAgreement.agreement >=
+      48 &&
+
     !severeConflict &&
-    human.score < 50
+
+    human.score <
+      50
   ) {
+
     verdict =
       'Strong AI evidence';
 
   } else if (
-    language === 'English' &&
-    modelAgreement.active >= 2 &&
-    calibrated >= 74 &&
-    sufficiency.score >= 62 &&
-    modelAgreement.agreement >= 38 &&
-    modelAgreement.spread < 55 &&
-    human.score < 55
+    language ===
+      'English' &&
+
+    modelAgreement.active >=
+      2 &&
+
+    calibrated >=
+      74 &&
+
+    sufficiency.score >=
+      62 &&
+
+    modelAgreement.agreement >=
+      38 &&
+
+    modelAgreement.spread <
+      55 &&
+
+    human.score <
+      55
   ) {
+
     verdict =
       'Likely AI';
 
   } else if (
-    language === 'English' &&
-    modelAgreement.active >= 2 &&
-    calibrated <= 18 &&
-    human.score >= 50 &&
-    sufficiency.score >= 60 &&
-    modelAgreement.agreement >= 45
+    language ===
+      'English' &&
+
+    modelAgreement.active >=
+      2 &&
+
+    calibrated <=
+      18 &&
+
+    human.score >=
+      50 &&
+
+    sufficiency.score >=
+      60 &&
+
+    modelAgreement.agreement >=
+      45
   ) {
+
     verdict =
       'Strong human evidence';
 
   } else if (
-    language === 'English' &&
-    modelAgreement.active >= 2 &&
-    calibrated <= 34 &&
-    human.score >= 40 &&
-    sufficiency.score >= 50 &&
-    modelAgreement.spread < 50
+    language ===
+      'English' &&
+
+    modelAgreement.active >=
+      2 &&
+
+    calibrated <=
+      34 &&
+
+    human.score >=
+      40 &&
+
+    sufficiency.score >=
+      50 &&
+
+    modelAgreement.spread <
+      50
   ) {
+
     verdict =
       'Likely human';
   }
 
+
   if (
     highConflict &&
-    verdict !== 'INCONCLUSIVE'
+    verdict !==
+      'INCONCLUSIVE'
   ) {
+
     verdict =
       'INCONCLUSIVE';
   }
 
+
   if (
-    sufficiency.score < 55
+    sufficiency.score <
+    55
   ) {
+
     verdict =
       'INCONCLUSIVE';
   }
 
+
   if (
-    language !== 'English'
+    language !==
+    'English'
   ) {
+
     verdict =
       'INCONCLUSIVE';
   }
+
+
+  const confidenceBase =
+    sufficiency.score *
+      0.45 +
+    modelAgreement.agreement *
+      0.35 +
+    segmentAnalysis.stability *
+      0.20;
+
 
   const confidence =
-    verdict === 'INCONCLUSIVE'
+    verdict ===
+      'INCONCLUSIVE'
       ? Math.min(
           55,
           Math.round(
-            sufficiency.score * 0.45 +
-            modelAgreement.agreement * 0.35 +
-            segmentAnalysis.stability * 0.20
+            confidenceBase
           )
         )
       : clamp(
           Math.round(
-            sufficiency.score * 0.45 +
-            modelAgreement.agreement * 0.35 +
-            segmentAnalysis.stability * 0.20
+            confidenceBase
           )
         );
+
 
   const uncertainty =
     clamp(
@@ -2959,7 +4362,9 @@ function buildConsensus({
       95
     );
 
+
   return {
+
     raw,
 
     weightedRaw:
@@ -3028,32 +4433,40 @@ async function analyzeSample({
   excludeBenchmarkId = null,
   forBatch = false
 }) {
+
   const words =
     wordCount(
       value
     );
 
+
   if (
-    words < 30
+    words <
+    30
   ) {
+
     throw new Error(
       'Sample text is too short.'
     );
   }
+
 
   const language =
     detectLanguage(
       value
     );
 
+
   const profile =
     createProfile(
       value
     );
 
+
   const domainInfo =
     suppliedDomain &&
-    suppliedDomain !== 'auto'
+    suppliedDomain !==
+      'auto'
       ? {
           domain:
             suppliedDomain,
@@ -3066,18 +4479,22 @@ async function analyzeSample({
           profile
         );
 
+
   const human =
     humanEvidence(
       profile,
       domainInfo.domain
     );
 
+
   const chunks =
     chunkText(
       value
     );
 
+
   const scores = {
+
     tmr:
       NaN,
 
@@ -3088,19 +4505,24 @@ async function analyzeSample({
       NaN
   };
 
+
   let segmentScores =
     [];
 
+
   let thirdUsed =
     false;
+
 
   /*
     TMR
   */
 
   try {
+
     const modelA =
       await loadTMR();
+
 
     scores.tmr =
       await classify(
@@ -3108,11 +4530,14 @@ async function analyzeSample({
         value
       );
 
+
     for (
       const chunk
       of chunks
     ) {
+
       try {
+
         segmentScores.push(
           await classify(
             modelA,
@@ -3120,27 +4545,42 @@ async function analyzeSample({
           )
         );
 
-      } catch {
+      } catch (
+        error
+      ) {
+
+        console.warn(
+          'TMR segment failed:',
+          error
+        );
+
+
         segmentScores.push(
           50
         );
       }
     }
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
+
     console.error(
-      'TMR sample analysis failed:',
+      'TMR analysis failed:',
       error
     );
   }
+
 
   /*
     E5
   */
 
   try {
+
     const modelB =
       await loadE5();
+
 
     scores.e5 =
       await classify(
@@ -3148,44 +4588,53 @@ async function analyzeSample({
         value
       );
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
+
     console.error(
-      'E5 sample analysis failed:',
+      'E5 analysis failed:',
       error
     );
   }
 
+
   /*
-    Third model routing.
+    ModernBERT routing
   */
 
   if (
-    !isMobileDevice() &&
-    Number.isFinite(
-      scores.tmr
-    ) &&
-    Number.isFinite(
-      scores.e5
-    )
+    !isMobileDevice()
   ) {
+
     thirdUsed =
       shouldUseThirdModel({
+
         scores,
+
         human,
+
         segmentScores,
+
         domain:
           domainInfo.domain,
+
         words,
+
         language
       });
   }
 
+
   if (
     thirdUsed
   ) {
+
     try {
+
       const modelC =
         await loadModern();
+
 
       scores.modern =
         await classify(
@@ -3193,44 +4642,63 @@ async function analyzeSample({
           value
         );
 
-    } catch (error) {
+    } catch (
+      error
+    ) {
+
       console.error(
-        'ModernBERT sample analysis failed:',
+        'ModernBERT analysis failed:',
         error
       );
+
 
       thirdUsed =
         false;
     }
   }
 
+
   if (
     !segmentScores.length
   ) {
+
     segmentScores =
       chunks.map(
         () => 50
       );
   }
 
+
   const benchmarkRecords =
     loadBench();
 
+
   const consensus =
     buildConsensus({
+
       scores,
+
       profile,
+
       segmentScores,
+
       language,
+
       domain:
         domainInfo.domain,
+
       human,
+
       thirdUsed,
+
       benchmarkRecords,
+
       excludeBenchmarkId
     });
 
+
   return {
+
     version:
       VERSION,
 
@@ -3270,100 +4738,578 @@ async function analyzeSample({
 
 
 /* ============================================================
-   CALIBRATION QUEUE STORAGE
+   DATASET FILE READER
 ============================================================ */
 
-function loadCalibrationQueue() {
-  return loadJSON(
-    IMPORT_KEY,
-    []
-  );
-}
-
-
-function saveCalibrationQueue(
-  queue
+async function readDatasetFile(
+  file
 ) {
-  return saveJSON(
-    IMPORT_KEY,
-    queue
-  );
+
+  if (
+    !file
+  ) {
+
+    throw new Error(
+      'No dataset file selected.'
+    );
+  }
+
+
+  const maxBytes =
+    5 *
+    1024 *
+    1024;
+
+
+  if (
+    file.size >
+    maxBytes
+  ) {
+
+    throw new Error(
+      'Dataset file is larger than 5 MB.'
+    );
+  }
+
+
+  const allowedExtensions =
+    [
+      '.jsonl',
+      '.json',
+      '.txt'
+    ];
+
+
+  const lowerName =
+    String(
+      file.name ||
+      ''
+    )
+      .toLowerCase();
+
+
+  if (
+    !allowedExtensions
+      .some(
+        extension =>
+          lowerName
+            .endsWith(
+              extension
+            )
+      )
+  ) {
+
+    throw new Error(
+      'Only .jsonl, .json and .txt files are supported.'
+    );
+  }
+
+
+  const content =
+    await file.text();
+
+
+  if (
+    !content.trim()
+  ) {
+
+    throw new Error(
+      'Dataset file is empty.'
+    );
+  }
+
+
+  return {
+
+    content,
+
+    parsed:
+      parseDatasetContent(
+        content,
+        file.name
+      )
+  };
 }
 
 
 /* ============================================================
-   WORKER STATE STORAGE
+   SELECT DATASET FILE
 ============================================================ */
 
-function saveWorkerState(
-  state
+async function handleDatasetFileSelection(
+  file
 ) {
-  saveJSON(
-    WORKER_STATE_KEY,
-    state
-  );
-}
+
+  selectedDatasetFile =
+    file ||
+    null;
 
 
-function loadWorkerState() {
-  return loadJSON(
-    WORKER_STATE_KEY,
-    {
-      processed:
-        0,
+  if (
+    !selectedDatasetFile
+  ) {
 
-      failed:
-        0,
+    renderDatasetFileInfo();
 
-      lastUpdated:
-        null
+    renderImportPreview({
+      samples:
+        [],
+      errors:
+        []
+    });
+
+    return;
+  }
+
+
+  renderDatasetFileInfo({
+
+    name:
+      selectedDatasetFile.name,
+
+    status:
+      'READING',
+
+    message:
+      `${Math.round(
+        selectedDatasetFile.size /
+        1024
+      )} KB`
+  });
+
+
+  try {
+
+    const {
+      content,
+      parsed
+    } =
+      await readDatasetFile(
+        selectedDatasetFile
+      );
+
+
+    if (
+      $('bulkImportText')
+    ) {
+
+      $('bulkImportText')
+        .value =
+        content;
     }
+
+
+    renderImportPreview(
+      parsed
+    );
+
+
+    renderDatasetFileInfo({
+
+      name:
+        selectedDatasetFile.name,
+
+      status:
+        parsed.errors.length
+          ? 'CHECK'
+          : 'VALID',
+
+      message:
+        `${parsed.samples.length} valid · ${parsed.errors.length} invalid · ${parsed.format}`
+    });
+
+
+    if (
+      $('bulkImportResult')
+    ) {
+
+      $('bulkImportResult')
+        .classList
+        .remove(
+          'hidden'
+        );
+
+
+      $('bulkImportResult')
+        .innerHTML =
+        parsed.errors.length
+          ? `
+<b>${parsed.samples.length} valid samples.</b><br><br>
+${parsed.errors
+  .slice(
+    0,
+    20
+  )
+  .map(
+    error =>
+      escapeHTML(
+        error
+      )
+  )
+  .join(
+    '<br>'
+  )}
+`
+          : `
+<b>${parsed.samples.length} valid samples.</b><br>
+Dataset file parsed successfully.
+`;
+    }
+
+  } catch (
+    error
+  ) {
+
+    console.error(
+      'Dataset file error:',
+      error
+    );
+
+
+    renderDatasetFileInfo({
+
+      name:
+        selectedDatasetFile.name,
+
+      status:
+        'ERROR',
+
+      message:
+        error.message
+    });
+
+
+    alert(
+      error.message
+    );
+  }
+}
+
+
+/* ============================================================
+   CLEAR DATASET FILE
+============================================================ */
+
+function clearSelectedDatasetFile() {
+
+  selectedDatasetFile =
+    null;
+
+
+  if (
+    $('datasetFileInput')
+  ) {
+
+    $('datasetFileInput')
+      .value =
+      '';
+  }
+
+
+  if (
+    $('bulkImportText')
+  ) {
+
+    $('bulkImportText')
+      .value =
+      '';
+  }
+
+
+  renderDatasetFileInfo();
+
+
+  renderImportPreview({
+
+    samples:
+      [],
+
+    errors:
+      []
+  });
+
+
+  if (
+    $('bulkImportResult')
+  ) {
+
+    $('bulkImportResult')
+      .classList
+      .add(
+        'hidden'
+      );
+
+
+    $('bulkImportResult')
+      .innerHTML =
+      '';
+  }
+}
+
+
+/* ============================================================
+   BULK VALIDATION
+============================================================ */
+
+function validateBulkImport() {
+
+  const raw =
+    $('bulkImportText')
+      ?.value ||
+    '';
+
+
+  const parsed =
+    parseDatasetContent(
+      raw,
+      selectedDatasetFile
+        ?.name ||
+      ''
+    );
+
+
+  renderImportPreview(
+    parsed
+  );
+
+
+  if (
+    $('bulkImportResult')
+  ) {
+
+    $('bulkImportResult')
+      .classList
+      .remove(
+        'hidden'
+      );
+
+
+    $('bulkImportResult')
+      .innerHTML =
+      parsed.errors.length
+        ? `
+<b>${parsed.samples.length} valid samples.</b><br>
+<b>${parsed.errors.length} invalid samples.</b><br><br>
+${parsed.errors
+  .slice(
+    0,
+    30
+  )
+  .map(
+    error =>
+      escapeHTML(
+        error
+      )
+  )
+  .join(
+    '<br>'
+  )}
+`
+        : parsed.samples.length
+          ? `
+<b>${parsed.samples.length} valid samples.</b><br>
+No validation errors detected.
+`
+          : `
+<b>No valid samples detected.</b>
+`;
+  }
+
+
+  return parsed;
+}
+
+
+/* ============================================================
+   IMPORT INTO QUEUE
+============================================================ */
+
+function importBulkSamples() {
+
+  const parsed =
+    validateBulkImport();
+
+
+  if (
+    !parsed.samples.length
+  ) {
+
+    alert(
+      'No valid samples to import.'
+    );
+
+    return;
+  }
+
+
+  const queue =
+    loadCalibrationQueue();
+
+
+  const existingFingerprints =
+    new Set(
+      queue.map(
+        item =>
+          `${item.truth}::${item.text}`
+      )
+    );
+
+
+  const imported = [];
+
+  let duplicates =
+    0;
+
+
+  for (
+    const sample
+    of parsed.samples
+  ) {
+
+    const fingerprint =
+      `${sample.truth}::${sample.text}`;
+
+
+    if (
+      existingFingerprints.has(
+        fingerprint
+      )
+    ) {
+
+      duplicates++;
+
+      continue;
+    }
+
+
+    const row = {
+
+      importId:
+        `IMP-${Date.now()}-${Math.random()
+          .toString(
+            36
+          )
+          .slice(
+            2,
+            10
+          )}`,
+
+      status:
+        'PENDING',
+
+      createdAt:
+        nowISO(),
+
+      attempts:
+        0,
+
+      truth:
+        sample.truth,
+
+      source:
+        sample.source,
+
+      domain:
+        sample.domain,
+
+      text:
+        sample.text
+    };
+
+
+    imported.push(
+      row
+    );
+
+
+    existingFingerprints.add(
+      fingerprint
+    );
+  }
+
+
+  if (
+    imported.length
+  ) {
+
+    saveCalibrationQueue(
+      [
+        ...queue,
+        ...imported
+      ]
+    );
+  }
+
+
+  renderDatasetManager?.();
+
+
+  if (
+    $('bulkImportResult')
+  ) {
+
+    $('bulkImportResult')
+      .classList
+      .remove(
+        'hidden'
+      );
+
+
+    $('bulkImportResult')
+      .innerHTML = `
+<b>${imported.length} samples added to the calibration queue.</b><br>
+${duplicates} duplicates skipped.
+`;
+  }
+
+
+  alert(
+    `${imported.length} samples added to the calibration queue.${duplicates ? ` ${duplicates} duplicates skipped.` : ''}`
   );
 }
 
 
 /* ============================================================
-   QUEUE COUNTS
+   QUEUE SUMMARY
 ============================================================ */
 
 function queueSummary(
-  queue = loadCalibrationQueue()
+  queue =
+    loadCalibrationQueue()
 ) {
-  const pending =
-    queue.filter(
-      item =>
-        item.status === 'PENDING'
-    ).length;
-
-  const running =
-    queue.filter(
-      item =>
-        item.status === 'RUNNING'
-    ).length;
-
-  const complete =
-    queue.filter(
-      item =>
-        item.status === 'COMPLETE'
-    ).length;
-
-  const failed =
-    queue.filter(
-      item =>
-        item.status === 'FAILED'
-    ).length;
 
   return {
+
     total:
       queue.length,
 
-    pending,
+    pending:
+      queue.filter(
+        row =>
+          row.status ===
+          'PENDING'
+      ).length,
 
-    running,
+    running:
+      queue.filter(
+        row =>
+          row.status ===
+          'RUNNING'
+      ).length,
 
-    complete,
+    complete:
+      queue.filter(
+        row =>
+          row.status ===
+          'COMPLETE'
+      ).length,
 
-    failed
+    failed:
+      queue.filter(
+        row =>
+          row.status ===
+          'FAILED'
+      ).length
   };
 }
 
@@ -3373,33 +5319,43 @@ function queueSummary(
 ============================================================ */
 
 function recoverInterruptedQueue() {
+
   const queue =
     loadCalibrationQueue();
+
 
   let changed =
     false;
 
+
   for (
-    const item
+    const row
     of queue
   ) {
+
     if (
-      item.status === 'RUNNING'
+      row.status ===
+      'RUNNING'
     ) {
-      item.status =
+
+      row.status =
         'PENDING';
 
-      item.recoveredAt =
+
+      row.recoveredAt =
         nowISO();
+
 
       changed =
         true;
     }
   }
 
+
   if (
     changed
   ) {
+
     saveCalibrationQueue(
       queue
     );
@@ -3408,34 +5364,41 @@ function recoverInterruptedQueue() {
 
 
 /* ============================================================
-   UNIQUE BENCHMARK ID
+   BENCHMARK ID
 ============================================================ */
 
 function nextBenchmarkId(
   truth,
   records
 ) {
-  const prefix = {
-    AI:
-      'A',
 
-    HUMAN:
-      'H',
+  const prefix =
+    {
+      AI:
+        'A',
 
-    MIXED:
-      'M',
+      HUMAN:
+        'H',
 
-    UNKNOWN:
-      'U'
-  }[
-    truth
-  ] || 'X';
+      MIXED:
+        'M',
+
+      UNKNOWN:
+        'U'
+    }[
+      truth
+    ] ||
+    'X';
+
 
   const count =
     records.filter(
       record =>
-        record.truth === truth
-    ).length + 1;
+        record.truth ===
+        truth
+    ).length +
+    1;
+
 
   return `${prefix}-${String(
     count
@@ -3447,15 +5410,33 @@ function nextBenchmarkId(
 
 
 /* ============================================================
-   SAVE ANALYZED BATCH RECORD
+   SAVE BATCH RESULT
 ============================================================ */
 
 function saveAnalyzedBatchRecord(
   queueItem,
   analysis
 ) {
+
   const records =
     loadBench();
+
+
+  const existing =
+    records.find(
+      record =>
+        record.importId ===
+        queueItem.importId
+    );
+
+
+  if (
+    existing
+  ) {
+
+    return existing.id;
+  }
+
 
   const id =
     nextBenchmarkId(
@@ -3463,7 +5444,9 @@ function saveAnalyzedBatchRecord(
       records
     );
 
+
   const record = {
+
     id,
 
     truth:
@@ -3491,27 +5474,32 @@ function saveAnalyzedBatchRecord(
       queueItem.text
   };
 
+
   records.push(
     record
   );
 
+
   saveBench(
     records
   );
+
 
   return id;
 }
 
 
 /* ============================================================
-   BATCH SAMPLE PROCESSOR
+   PROCESS ONE QUEUE ITEM
 ============================================================ */
 
 async function processQueueItem(
   item
 ) {
+
   const analysis =
     await analyzeSample({
+
       value:
         item.text,
 
@@ -3522,12 +5510,12 @@ async function processQueueItem(
         item.source,
 
       suppliedDomain:
-        item.domain ||
-        null,
+        item.domain,
 
       forBatch:
         true
     });
+
 
   const benchmarkId =
     saveAnalyzedBatchRecord(
@@ -3535,35 +5523,101 @@ async function processQueueItem(
       analysis
     );
 
+
   return {
+
     benchmarkId,
+
     analysis
   };
 }
 
 
 /* ============================================================
-   BATCH WORKER
+   WORKER STATE
+============================================================ */
+
+function loadWorkerState() {
+
+  return loadJSON(
+    WORKER_STATE_KEY,
+    {
+      processed:
+        0,
+
+      failed:
+        0,
+
+      lastUpdated:
+        null
+    }
+  );
+}
+
+
+function saveWorkerState(
+  state
+) {
+
+  saveJSON(
+    WORKER_STATE_KEY,
+    state
+  );
+}
+
+
+/* ============================================================
+   BATCH CALIBRATION WORKER
 ============================================================ */
 
 async function runCalibrationWorker() {
+
   if (
     workerRunning
   ) {
+
+    if (
+      workerPaused
+    ) {
+
+      workerPaused =
+        false;
+
+
+      if (
+        $('pauseCalibrationQueue')
+      ) {
+
+        $('pauseCalibrationQueue')
+          .textContent =
+          'Pause';
+      }
+
+
+      setWorkerUI(
+        'Running',
+        'Calibration worker resumed.'
+      );
+    }
+
     return;
   }
+
 
   let queue =
     loadCalibrationQueue();
 
-  const summary =
+
+  let summary =
     queueSummary(
       queue
     );
 
+
   if (
     !summary.pending
   ) {
+
     setWorkerUI(
       'Idle',
       'No pending calibration samples.',
@@ -3575,119 +5629,176 @@ async function runCalibrationWorker() {
     return;
   }
 
+
   workerRunning =
     true;
+
 
   workerPaused =
     false;
 
-  workerAbortRequested =
+
+  workerStopRequested =
     false;
+
 
   if (
     $('runCalibrationQueue')
   ) {
-    $('runCalibrationQueue').disabled =
+
+    $('runCalibrationQueue')
+      .disabled =
       true;
   }
 
-  setWorkerUI(
-    'Running',
-    `Preparing ${summary.pending} pending samples…`,
-    summary.total
-      ? summary.complete /
-        summary.total *
-        100
-      : 0
-  );
+
+  if (
+    $('pauseCalibrationQueue')
+  ) {
+
+    $('pauseCalibrationQueue')
+      .textContent =
+      'Pause';
+  }
+
 
   try {
-    while (true) {
+
+    while (
+      true
+    ) {
+
       if (
-        workerAbortRequested
+        workerStopRequested
       ) {
+
         break;
       }
+
 
       while (
         workerPaused
       ) {
+
         setWorkerUI(
           'Paused',
           'Calibration worker is paused.'
         );
 
+
         await sleep(
-          400
+          350
         );
 
+
         if (
-          workerAbortRequested
+          workerStopRequested
         ) {
+
           break;
         }
       }
 
+
       if (
-        workerAbortRequested
+        workerStopRequested
       ) {
+
         break;
       }
+
 
       queue =
         loadCalibrationQueue();
 
-      const nextIndex =
+
+      const index =
         queue.findIndex(
-          item =>
-            item.status ===
+          row =>
+            row.status ===
             'PENDING'
         );
 
+
       if (
-        nextIndex === -1
+        index ===
+        -1
       ) {
+
         break;
       }
 
-      const item =
-        queue[
-          nextIndex
-        ];
 
-      item.status =
+      const item =
+        {
+          ...queue[
+            index
+          ]
+        };
+
+
+      queue[
+        index
+      ].status =
         'RUNNING';
 
-      item.startedAt =
+
+      queue[
+        index
+      ].startedAt =
         nowISO();
+
+
+      queue[
+        index
+      ].attempts =
+        (
+          queue[
+            index
+          ].attempts ||
+          0
+        ) +
+        1;
+
 
       saveCalibrationQueue(
         queue
       );
 
-      const before =
+
+      summary =
         queueSummary(
           queue
         );
 
+
+      const finishedBefore =
+        summary.complete +
+        summary.failed;
+
+
       setWorkerUI(
         'Running',
-        `Analyzing ${before.complete + 1}/${before.total} · ${item.truth} · ${wordCount(item.text)} words`,
-        before.total
-          ? before.complete /
-            before.total *
+        `Analyzing ${finishedBefore + 1}/${summary.total} · ${item.truth} · ${wordCount(item.text)} words`,
+        summary.total
+          ? finishedBefore /
+            summary.total *
             100
           : 0
       );
 
+
       try {
+
         const result =
           await processQueueItem(
             item
           );
 
+
         queue =
           loadCalibrationQueue();
+
 
         const currentIndex =
           queue.findIndex(
@@ -3696,23 +5807,29 @@ async function runCalibrationWorker() {
               item.importId
           );
 
+
         if (
-          currentIndex !== -1
+          currentIndex !==
+          -1
         ) {
+
           queue[
             currentIndex
           ].status =
             'COMPLETE';
+
 
           queue[
             currentIndex
           ].completedAt =
             nowISO();
 
+
           queue[
             currentIndex
           ].benchmarkId =
             result.benchmarkId;
+
 
           queue[
             currentIndex
@@ -3720,34 +5837,45 @@ async function runCalibrationWorker() {
             null;
         }
 
+
         saveCalibrationQueue(
           queue
         );
 
+
         const workerState =
           loadWorkerState();
+
 
         workerState.processed =
           (
             workerState.processed ||
             0
-          ) + 1;
+          ) +
+          1;
+
 
         workerState.lastUpdated =
           nowISO();
+
 
         saveWorkerState(
           workerState
         );
 
-      } catch (error) {
+      } catch (
+        error
+      ) {
+
         console.error(
-          'Batch sample failed:',
+          'Calibration sample failed:',
           error
         );
 
+
         queue =
           loadCalibrationQueue();
+
 
         const currentIndex =
           queue.findIndex(
@@ -3756,18 +5884,23 @@ async function runCalibrationWorker() {
               item.importId
           );
 
+
         if (
-          currentIndex !== -1
+          currentIndex !==
+          -1
         ) {
+
           queue[
             currentIndex
           ].status =
             'FAILED';
 
+
           queue[
             currentIndex
           ].completedAt =
             nowISO();
+
 
           queue[
             currentIndex
@@ -3778,125 +5911,154 @@ async function runCalibrationWorker() {
             );
         }
 
+
         saveCalibrationQueue(
           queue
         );
 
+
         const workerState =
           loadWorkerState();
+
 
         workerState.failed =
           (
             workerState.failed ||
             0
-          ) + 1;
+          ) +
+          1;
+
 
         workerState.lastUpdated =
           nowISO();
+
 
         saveWorkerState(
           workerState
         );
       }
 
-      const after =
+
+      summary =
         queueSummary(
           loadCalibrationQueue()
         );
 
-      const completed =
-        after.complete +
-        after.failed;
+
+      const processed =
+        summary.complete +
+        summary.failed;
+
 
       setWorkerUI(
         'Running',
-        `${completed}/${after.total} processed · ${after.failed} failed`,
-        after.total
-          ? completed /
-            after.total *
+        `${processed}/${summary.total} processed · ${summary.failed} failed`,
+        summary.total
+          ? processed /
+            summary.total *
             100
           : 0
       );
 
+
+      renderDatasetManager?.();
+
+      renderCalibrationLab?.();
+
+
       /*
-        Give browser UI / memory cleanup some time.
+        Yield control to the browser.
       */
 
       await sleep(
-        350
+        300
       );
-
-      renderDatasetManager?.();
-      renderCalibrationLab?.();
     }
 
-    const finalQueue =
-      loadCalibrationQueue();
 
     const finalSummary =
       queueSummary(
-        finalQueue
+        loadCalibrationQueue()
       );
+
 
     if (
-      workerAbortRequested
+      workerStopRequested
     ) {
+
       setWorkerUI(
         'Stopped',
-        `${finalSummary.complete}/${finalSummary.total} completed · ${finalSummary.pending} pending`,
+        `${finalSummary.pending} pending · ${finalSummary.complete} complete · ${finalSummary.failed} failed`,
         finalSummary.total
-          ? finalSummary.complete /
-            finalSummary.total *
-            100
-          : 0
-      );
-
-    } else if (
-      workerPaused
-    ) {
-      setWorkerUI(
-        'Paused',
-        `${finalSummary.complete}/${finalSummary.total} completed · ${finalSummary.pending} pending`,
-        finalSummary.total
-          ? finalSummary.complete /
+          ? (
+              finalSummary.complete +
+              finalSummary.failed
+            ) /
             finalSummary.total *
             100
           : 0
       );
 
     } else {
+
       setWorkerUI(
-        'Complete',
-        `${finalSummary.complete} completed · ${finalSummary.failed} failed`,
+        finalSummary.failed
+          ? 'Complete with errors'
+          : 'Complete',
+
+        `${finalSummary.complete} complete · ${finalSummary.failed} failed`,
+
         100
       );
     }
 
   } finally {
+
     workerRunning =
       false;
+
+
+    workerPaused =
+      false;
+
 
     if (
       $('runCalibrationQueue')
     ) {
-      $('runCalibrationQueue').disabled =
+
+      $('runCalibrationQueue')
+        .disabled =
         false;
     }
 
+
+    if (
+      $('pauseCalibrationQueue')
+    ) {
+
+      $('pauseCalibrationQueue')
+        .textContent =
+        'Pause';
+    }
+
+
     renderDatasetManager?.();
+
     renderCalibrationLab?.();
   }
 }
 
 
 /* ============================================================
-   PAUSE / RESUME
+   PAUSE / RESUME WORKER
 ============================================================ */
 
 function toggleCalibrationPause() {
+
   if (
     !workerRunning
   ) {
+
     setWorkerUI(
       'Idle',
       'Calibration worker is not currently running.'
@@ -3905,52 +6067,56 @@ function toggleCalibrationPause() {
     return;
   }
 
+
   workerPaused =
     !workerPaused;
 
-  if (
-    workerPaused
-  ) {
-    setWorkerUI(
-      'Paused',
-      'Worker will pause before the next sample.'
-    );
-
-  } else {
-    setWorkerUI(
-      'Running',
-      'Calibration worker resumed.'
-    );
-  }
 
   if (
     $('pauseCalibrationQueue')
   ) {
+
     $('pauseCalibrationQueue')
       .textContent =
       workerPaused
         ? 'Resume'
         : 'Pause';
   }
+
+
+  setWorkerUI(
+    workerPaused
+      ? 'Paused'
+      : 'Running',
+
+    workerPaused
+      ? 'Worker will pause before the next sample.'
+      : 'Calibration worker resumed.'
+  );
 }
 /* ============================================================
-   MAIN SCANNER
+   MAIN SMART SCAN
 ============================================================ */
 
 async function runSmartScan() {
+
   const value =
     textEl?.value
       ?.trim() ||
     '';
+
 
   const words =
     wordCount(
       value
     );
 
+
   if (
-    words < 80
+    words <
+    80
   ) {
+
     alert(
       'Paste at least 80 words. 150+ words is recommended.'
     );
@@ -3958,107 +6124,140 @@ async function runSmartScan() {
     return;
   }
 
+
   if (
     $('scan')
   ) {
-    $('scan').disabled =
+
+    $('scan')
+      .disabled =
       true;
   }
 
+
   try {
+
     setState(
       'Analyzing…'
     );
+
 
     setProgress(
       3,
       'Profiling document…'
     );
 
+
     const analysis =
       await analyzeSample({
+
         value,
+
         forBatch:
           false
       });
+
 
     setProgress(
       95,
       'Building evidence report…'
     );
 
+
     renderScan(
       analysis
     );
 
+
     saveHistory(
       analysis
     );
+
 
     setProgress(
       100,
       'Trace complete'
     );
 
+
     if (
       isMobileDevice()
     ) {
+
       setState(
-        'V6.4 Mobile Safe ✓'
+        'V6.6 Mobile Safe ✓'
       );
 
     } else if (
       analysis.consensus
         .thirdUsed
     ) {
+
       setState(
-        'V6.4 Adaptive 3-model engine ✓'
+        'V6.6 Adaptive 3-model engine ✓'
       );
 
     } else {
+
       setState(
-        'V6.4 Adaptive engine ✓'
+        'V6.6 Adaptive engine ✓'
       );
     }
 
+
     setTimeout(
       () => {
+
         try {
+
           benchmarkPrompt(
             analysis
           );
 
-        } catch (error) {
+        } catch (
+          error
+        ) {
+
           console.warn(
             'Benchmark prompt failed:',
             error
           );
         }
+
       },
       700
     );
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
+
     console.error(
       'Smart scan failed:',
       error
     );
 
+
     setState(
       'Scan error'
     );
+
 
     alert(
       `AI Trace could not complete the scan.\n\n${error?.message || 'Unknown error'}`
     );
 
   } finally {
+
     if (
       $('scan')
     ) {
-      $('scan').disabled =
+
+      $('scan')
+        .disabled =
         false;
     }
+
 
     hideProgress();
   }
@@ -4072,16 +6271,27 @@ async function runSmartScan() {
 function renderScan(
   scan
 ) {
+
   const {
+
     consensus,
+
     scores,
+
     human,
+
     language,
+
     domain,
+
     domainConfidence,
+
     segmentScores,
+
     profile
+
   } = scan;
+
 
   $('report')
     ?.classList
@@ -4089,180 +6299,253 @@ function renderScan(
       'hidden'
     );
 
+
   const resolved =
     consensus.verdict !==
     'INCONCLUSIVE';
 
+
   if (
     $('score')
   ) {
-    $('score').textContent =
+
+    $('score')
+      .textContent =
       resolved
         ? `${consensus.calibrated}%`
         : '—';
   }
 
+
   if (
     $('scaleFill')
   ) {
-    $('scaleFill').style.width =
+
+    $('scaleFill')
+      .style
+      .width =
       resolved
         ? `${consensus.calibrated}%`
         : '0%';
   }
 
+
   if (
     $('verdict')
   ) {
-    $('verdict').textContent =
+
+    $('verdict')
+      .textContent =
       consensus.verdict;
   }
 
+
   const confidenceLabel =
-    consensus.confidence >= 75
+    consensus.confidence >=
+      75
       ? 'High'
-      : consensus.confidence >= 50
+      : consensus.confidence >=
+          50
         ? 'Medium'
         : 'Low';
+
 
   if (
     $('confidence')
   ) {
-    $('confidence').textContent =
+
+    $('confidence')
+      .textContent =
       `Evidence confidence: ${confidenceLabel} (${consensus.confidence}%)`;
   }
+
 
   if (
     $('explain')
   ) {
+
     let explanation =
       `Diagnostic AI signal: ${consensus.calibrated}%. ` +
       `Evidence sufficiency: ${consensus.sufficiency.score}% (${consensus.sufficiency.level}). ` +
       `Model agreement: ${consensus.modelAgreement.agreement}%.`;
 
+
     if (
       consensus.verdict ===
       'INCONCLUSIVE'
     ) {
+
       explanation =
         `AI Trace abstained because the available evidence was not strong enough for a reliable AI/Human attribution. ${explanation}`;
     }
 
+
     if (
       consensus.outlier.detected
     ) {
+
       explanation +=
         ` ${String(
           consensus.outlier.detector
         ).toUpperCase()} was down-weighted as a possible detector outlier.`;
     }
 
-    $('explain').textContent =
+
+    $('explain')
+      .textContent =
       explanation;
   }
+
 
   const humanDisplay =
     clamp(
       Math.round(
-        human.score * 0.72 +
+
+        human.score *
+        0.72 +
+
         (
           100 -
           consensus.calibrated
-        ) * 0.28
+        ) *
+        0.28
       )
     );
+
 
   if (
     $('humanVal')
   ) {
-    $('humanVal').textContent =
+
+    $('humanVal')
+      .textContent =
       `${humanDisplay}%`;
   }
+
 
   if (
     $('aiVal')
   ) {
-    $('aiVal').textContent =
+
+    $('aiVal')
+      .textContent =
       resolved
         ? `${consensus.calibrated}%`
         : 'N/A';
   }
 
+
   if (
     $('uncertainVal')
   ) {
-    $('uncertainVal').textContent =
+
+    $('uncertainVal')
+      .textContent =
       `${consensus.uncertainty}%`;
   }
+
 
   if (
     $('humanBar')
   ) {
-    $('humanBar').style.width =
+
+    $('humanBar')
+      .style
+      .width =
       `${humanDisplay}%`;
   }
+
 
   if (
     $('aiBar')
   ) {
-    $('aiBar').style.width =
+
+    $('aiBar')
+      .style
+      .width =
       resolved
         ? `${consensus.calibrated}%`
         : '0%';
   }
 
+
   if (
     $('uncertainBar')
   ) {
-    $('uncertainBar').style.width =
+
+    $('uncertainBar')
+      .style
+      .width =
       `${consensus.uncertainty}%`;
   }
+
 
   if (
     $('engineBadge')
   ) {
+
     if (
       consensus.outlier.detected
     ) {
-      $('engineBadge').textContent =
-        'V6.4 • OUTLIER DEFENSE';
+
+      $('engineBadge')
+        .textContent =
+        'V6.6 • OUTLIER DEFENSE';
 
     } else if (
       consensus.thirdUsed
     ) {
-      $('engineBadge').textContent =
-        'V6.4 • ADAPTIVE 3-MODEL';
+
+      $('engineBadge')
+        .textContent =
+        'V6.6 • ADAPTIVE 3-MODEL';
 
     } else {
-      $('engineBadge').textContent =
-        'V6.4 • ADAPTIVE CONSENSUS';
+
+      $('engineBadge')
+        .textContent =
+        'V6.6 • ADAPTIVE CONSENSUS';
     }
   }
 
+
   const modelWeightLine =
     detector => {
+
       const item =
         consensus.modelWeights?.[
           detector
         ];
 
-      if (!item) {
+
+      if (
+        !item
+      ) {
+
         return 'Inactive';
       }
+
 
       return `${item.score}% signal · weight ${item.weight}`;
     };
 
+
   const reliabilityLine =
     detector => {
+
       const item =
         consensus.reliability?.[
           detector
         ];
 
-      if (!item) {
+
+      if (
+        !item
+      ) {
+
         return 'No reliability data';
       }
+
 
       return (
         `Base ${Number(
@@ -4277,6 +6560,7 @@ function renderScan(
       );
     };
 
+
   const humanReasons =
     human.reasons.length
       ? human.reasons
@@ -4289,7 +6573,9 @@ function renderScan(
           )
       : 'No strong human-style counter-signals';
 
+
   const evidence = [
+
     [
       'Final decision',
       consensus.verdict,
@@ -4327,7 +6613,7 @@ function renderScan(
     ],
 
     [
-      'TMR',
+      'TMR detector',
       Number.isFinite(
         scores.tmr
       )
@@ -4347,7 +6633,7 @@ function renderScan(
     ],
 
     [
-      'E5-small',
+      'E5-small detector',
       Number.isFinite(
         scores.e5
       )
@@ -4367,7 +6653,7 @@ function renderScan(
     ],
 
     [
-      'ModernBERT',
+      'ModernBERT judge',
       Number.isFinite(
         scores.modern
       )
@@ -4429,26 +6715,51 @@ function renderScan(
     ]
   ];
 
+
   if (
     $('evidence')
   ) {
-    $('evidence').innerHTML =
+
+    $('evidence')
+      .innerHTML =
       evidence
         .map(
           item => `
+
 <div class="ev">
+
   <div class="evTop">
-    <span>${escapeHTML(item[0])}</span>
-    <span>${escapeHTML(item[2])}</span>
+
+    <span>${escapeHTML(
+      item[
+        0
+      ]
+    )}</span>
+
+    <span>${escapeHTML(
+      item[
+        2
+      ]
+    )}</span>
+
   </div>
-  <small>${escapeHTML(item[1])}</small>
+
+  <small>${escapeHTML(
+    item[
+      1
+    ]
+  )}</small>
+
 </div>
+
 `
         )
         .join('');
   }
 
+
   const metrics = {
+
     Words:
       profile.words,
 
@@ -4470,7 +6781,9 @@ function renderScan(
     'Sentence burstiness':
       profile
         .sentenceBurstiness
-        .toFixed(2),
+        .toFixed(
+          2
+        ),
 
     'Lexical diversity':
       `${Math.round(
@@ -4523,10 +6836,13 @@ function renderScan(
       consensus.verdict
   };
 
+
   if (
     $('metrics')
   ) {
-    $('metrics').innerHTML =
+
+    $('metrics')
+      .innerHTML =
       Object.entries(
         metrics
       )
@@ -4537,14 +6853,26 @@ function renderScan(
               value
             ]
           ) => `
+
 <div class="metric">
-  <span>${escapeHTML(key)}</span>
-  <b>${escapeHTML(String(value))}</b>
+
+  <span>${escapeHTML(
+    key
+  )}</span>
+
+  <b>${escapeHTML(
+    String(
+      value
+    )
+  )}</b>
+
 </div>
+
 `
         )
         .join('');
   }
+
 
   const chunks =
     chunkText(
@@ -4553,38 +6881,59 @@ function renderScan(
       ''
     );
 
+
   if (
     $('segments')
   ) {
-    $('segments').innerHTML =
+
+    $('segments')
+      .innerHTML =
       chunks
         .map(
           (
             chunk,
             index
           ) => {
+
             const score =
               segmentScores[
                 index
               ] ??
               50;
 
+
             const label =
-              score >= 70
+              score >=
+                70
                 ? 'AI-supporting'
-                : score <= 30
+                : score <=
+                    30
                   ? 'Human-supporting'
                   : 'Uncertain';
 
+
             return `
+
 <div class="segment">
+
   <div class="segmentHead">
-    <b>Segment ${index + 1}</b>
-    <span>${score}% TMR · ${label}</span>
+
+    <b>
+      Segment ${index + 1}
+    </b>
+
+    <span>
+      ${score}% TMR · ${label}
+    </span>
+
   </div>
 
   <div class="segmentMeter">
-    <i style="width:${clamp(score)}%"></i>
+
+    <i style="width:${clamp(
+      score
+    )}%"></i>
+
   </div>
 
   <p>
@@ -4593,21 +6942,31 @@ function renderScan(
         0,
         320
       )
-    )}${chunk.length > 320 ? '…' : ''}
+    )}${
+      chunk.length >
+      320
+        ? '…'
+        : ''
+    }
   </p>
+
 </div>
+
 `;
           }
         )
         .join('');
   }
 
+
   renderDatasetManager();
 
   renderCalibrationLab();
 
+
   $('report')
     ?.scrollIntoView({
+
       behavior:
         'smooth',
 
@@ -4624,9 +6983,10 @@ function renderScan(
 function benchmarkPrompt(
   scan
 ) {
+
   const answer =
     prompt(
-`AI TRACE V6.4 BENCHMARK
+`AI TRACE V6.6 BENCHMARK
 
 Only label samples whose TRUE origin you know.
 
@@ -4638,14 +6998,20 @@ UNKNOWN = unknown origin
 Cancel / leave empty to skip.`
     );
 
-  if (!answer) {
+
+  if (
+    !answer
+  ) {
+
     return;
   }
+
 
   const truth =
     answer
       .trim()
       .toUpperCase();
+
 
   if (
     ![
@@ -4657,6 +7023,7 @@ Cancel / leave empty to skip.`
       truth
     )
   ) {
+
     alert(
       'Use AI, HUMAN, MIXED or UNKNOWN.'
     );
@@ -4664,14 +7031,17 @@ Cancel / leave empty to skip.`
     return;
   }
 
+
   const source =
     prompt(
       'Source / note:',
       ''
     ) || '';
 
+
   const records =
     loadBench();
+
 
   const id =
     nextBenchmarkId(
@@ -4679,7 +7049,9 @@ Cancel / leave empty to skip.`
       records
     );
 
+
   records.push({
+
     id,
 
     truth,
@@ -4695,13 +7067,16 @@ Cancel / leave empty to skip.`
     ...scan
   });
 
+
   saveBench(
     records
   );
 
+
   renderDatasetManager();
 
   renderCalibrationLab();
+
 
   alert(
     `Benchmark saved: ${id}`
@@ -4714,14 +7089,18 @@ Cancel / leave empty to skip.`
 ============================================================ */
 
 function datasetSummary(
-  records = loadBench()
+  records =
+    loadBench()
 ) {
+
   const binary =
     binaryRecords(
       records
     );
 
+
   return {
+
     total:
       records.length,
 
@@ -4731,25 +7110,29 @@ function datasetSummary(
     ai:
       records.filter(
         record =>
-          record.truth === 'AI'
+          record.truth ===
+          'AI'
       ).length,
 
     human:
       records.filter(
         record =>
-          record.truth === 'HUMAN'
+          record.truth ===
+          'HUMAN'
       ).length,
 
     mixed:
       records.filter(
         record =>
-          record.truth === 'MIXED'
+          record.truth ===
+          'MIXED'
       ).length,
 
     unknown:
       records.filter(
         record =>
-          record.truth === 'UNKNOWN'
+          record.truth ===
+          'UNKNOWN'
       ).length,
 
     domains:
@@ -4765,24 +7148,29 @@ function datasetSummary(
 
 
 /* ============================================================
-   DATASET MANAGER
+   DATASET MANAGER RENDER
 ============================================================ */
 
 function renderDatasetManager() {
+
   const records =
     loadBench();
+
 
   const summary =
     datasetSummary(
       records
     );
 
+
   const readiness =
     benchmarkReadiness(
       records
     );
 
+
   const mapping = {
+
     datasetTotal:
       summary.total,
 
@@ -4805,6 +7193,7 @@ function renderDatasetManager() {
       summary.domains
   };
 
+
   for (
     const [
       id,
@@ -4814,31 +7203,42 @@ function renderDatasetManager() {
       mapping
     )
   ) {
+
     if (
       $(id)
     ) {
-      $(id).textContent =
+
+      $(id)
+        .textContent =
         value;
     }
   }
 
+
   if (
     $('datasetStatusBadge')
   ) {
-    $('datasetStatusBadge').textContent =
+
+    $('datasetStatusBadge')
+      .textContent =
       readiness.level;
   }
+
 
   if (
     $('benchmarkReadinessTop')
   ) {
-    $('benchmarkReadinessTop').textContent =
+
+    $('benchmarkReadinessTop')
+      .textContent =
       `Dataset: ${readiness.level}`;
   }
+
 
   if (
     $('datasetRecords')
   ) {
+
     const recent =
       records
         .slice()
@@ -4848,47 +7248,85 @@ function renderDatasetManager() {
           12
         );
 
-    $('datasetRecords').innerHTML =
+
+    $('datasetRecords')
+      .innerHTML =
       recent.length
         ? recent
             .map(
               record => `
+
 <div class="ev">
+
   <div class="evTop">
-    <span>${escapeHTML(record.id || 'Record')}</span>
-    <span>${escapeHTML(record.truth || '?')}</span>
+
+    <span>
+      ${escapeHTML(
+        record.id ||
+        'Record'
+      )}
+    </span>
+
+    <span>
+      ${escapeHTML(
+        record.truth ||
+        '?'
+      )}
+    </span>
+
   </div>
 
   <small>
-    ${escapeHTML(record.domain || 'general')}
-    · ${escapeHTML(record.source || 'No source')}
+    ${escapeHTML(
+      record.domain ||
+      'general'
+    )}
+    · ${escapeHTML(
+      record.source ||
+      'No source'
+    )}
     · ${record.words || wordCount(record.text || '') || 0} words
   </small>
+
 </div>
+
 `
             )
             .join('')
         : `
+
 <div class="ev">
-  <small>No benchmark records yet.</small>
+
+  <small>
+    No benchmark records yet.
+  </small>
+
 </div>
+
 `;
   }
 
+
   const queue =
     queueSummary();
+
 
   const processed =
     queue.complete +
     queue.failed;
 
+
   if (
     !workerRunning
   ) {
+
     setWorkerUI(
+
       queue.pending
         ? 'Ready'
-        : 'Idle',
+        : queue.total
+          ? 'Complete'
+          : 'Idle',
 
       queue.total
         ? `${queue.pending} pending · ${queue.complete} complete · ${queue.failed} failed`
@@ -4909,34 +7347,42 @@ function renderDatasetManager() {
 ============================================================ */
 
 function domainPerformance(
-  records = loadBench()
+  records =
+    loadBench()
 ) {
+
   const rows =
     binaryRecords(
       records
     );
 
+
   const groups =
     new Map();
+
 
   for (
     const row
     of rows
   ) {
+
     const domain =
       row.domain ||
       'general';
+
 
     if (
       !groups.has(
         domain
       )
     ) {
+
       groups.set(
         domain,
         []
       );
     }
+
 
     groups
       .get(
@@ -4946,6 +7392,7 @@ function domainPerformance(
         row
       );
   }
+
 
   return [
     ...groups.entries()
@@ -4957,6 +7404,7 @@ function domainPerformance(
           domainRows
         ]
       ) => ({
+
         domain,
 
         ...evaluatePredictions(
@@ -4977,44 +7425,54 @@ function domainPerformance(
 
 
 /* ============================================================
-   INSPECTORS
+   FALSE POSITIVE / FALSE NEGATIVE / ABSTENTION
 ============================================================ */
 
 function falsePositiveRecords(
-  records = loadBench()
+  records =
+    loadBench()
 ) {
+
   return binaryRecords(
     records
   )
     .filter(
       record =>
-        record.truth === 'HUMAN' &&
+        record.truth ===
+          'HUMAN' &&
         benchmarkPrediction(
           record
-        ) === 'AI'
+        ) ===
+          'AI'
     );
 }
 
 
 function falseNegativeRecords(
-  records = loadBench()
+  records =
+    loadBench()
 ) {
+
   return binaryRecords(
     records
   )
     .filter(
       record =>
-        record.truth === 'AI' &&
+        record.truth ===
+          'AI' &&
         benchmarkPrediction(
           record
-        ) === 'HUMAN'
+        ) ===
+          'HUMAN'
     );
 }
 
 
 function abstentionRecords(
-  records = loadBench()
+  records =
+    loadBench()
 ) {
+
   return binaryRecords(
     records
   )
@@ -5022,7 +7480,8 @@ function abstentionRecords(
       record =>
         benchmarkPrediction(
           record
-        ) === 'ABSTAIN'
+        ) ===
+          'ABSTAIN'
     );
 }
 
@@ -5036,26 +7495,42 @@ function renderInspector(
   records,
   emptyText
 ) {
+
   const element =
     $(
       elementId
     );
 
-  if (!element) {
+
+  if (
+    !element
+  ) {
+
     return;
   }
+
 
   if (
     !records.length
   ) {
+
     element.innerHTML = `
+
 <div class="ev">
-  <small>${escapeHTML(emptyText)}</small>
+
+  <small>
+    ${escapeHTML(
+      emptyText
+    )}
+  </small>
+
 </div>
+
 `;
 
     return;
   }
+
 
   element.innerHTML =
     records
@@ -5067,19 +7542,43 @@ function renderInspector(
       )
       .map(
         record => `
+
 <div class="ev">
+
   <div class="evTop">
-    <span>${escapeHTML(record.id || 'Record')}</span>
-    <span>${escapeHTML(record.truth || '?')}</span>
+
+    <span>
+      ${escapeHTML(
+        record.id ||
+        'Record'
+      )}
+    </span>
+
+    <span>
+      ${escapeHTML(
+        record.truth ||
+        '?'
+      )}
+    </span>
+
   </div>
 
   <small>
-    ${escapeHTML(record.domain || 'general')}
-    · Prediction ${escapeHTML(benchmarkPrediction(record))}
+    ${escapeHTML(
+      record.domain ||
+      'general'
+    )}
+    · Prediction ${escapeHTML(
+      benchmarkPrediction(
+        record
+      )
+    )}
     · Signal ${record.consensus?.calibrated ?? '?'}%
     · Sufficiency ${record.consensus?.sufficiency?.score ?? '?'}%
   </small>
+
 </div>
+
 `
       )
       .join('');
@@ -5091,18 +7590,22 @@ function renderInspector(
 ============================================================ */
 
 function renderCalibrationLab() {
+
   const records =
     loadBench();
+
 
   const binary =
     binaryRecords(
       records
     );
 
+
   const readiness =
     benchmarkReadiness(
       records
     );
+
 
   const ensemble =
     evaluatePredictions(
@@ -5110,27 +7613,41 @@ function renderCalibrationLab() {
       benchmarkPrediction
     );
 
+
   if (
     $('calibrationStatusBadge')
   ) {
-    $('calibrationStatusBadge').textContent =
+
+    $('calibrationStatusBadge')
+      .textContent =
       readiness.level;
   }
+
 
   if (
     $('calibrationReadiness')
   ) {
-    $('calibrationReadiness').innerHTML = `
+
+    $('calibrationReadiness')
+      .innerHTML = `
+
 <div class="ev">
+
   <div class="evTop">
-    <span>${readiness.level}</span>
+
+    <span>
+      ${readiness.level}
+    </span>
+
     <span>
       ${
-        readiness.level === 'COLLECTING'
+        readiness.level ===
+        'COLLECTING'
           ? 'LEARNING LIMITED'
           : 'ADAPTIVE LEARNING ACTIVE'
       }
     </span>
+
   </div>
 
   <small>
@@ -5139,14 +7656,19 @@ function renderCalibrationLab() {
     · ${readiness.human} HUMAN
     · ${readiness.domains} domains
   </small>
+
 </div>
+
 `;
   }
+
 
   if (
     $('ensembleMetrics')
   ) {
+
     const metrics = {
+
       'Binary samples':
         ensemble.total,
 
@@ -5178,7 +7700,9 @@ function renderCalibrationLab() {
         `${ensemble.humanAbstainRate}%`
     };
 
-    $('ensembleMetrics').innerHTML =
+
+    $('ensembleMetrics')
+      .innerHTML =
       Object.entries(
         metrics
       )
@@ -5189,25 +7713,44 @@ function renderCalibrationLab() {
               value
             ]
           ) => `
+
 <div class="metric">
-  <span>${escapeHTML(key)}</span>
-  <b>${escapeHTML(String(value))}</b>
+
+  <span>
+    ${escapeHTML(
+      key
+    )}
+  </span>
+
+  <b>
+    ${escapeHTML(
+      String(
+        value
+      )
+    )}
+  </b>
+
 </div>
+
 `
         )
         .join('');
   }
 
+
   if (
     $('detectorReliability')
   ) {
+
     const reliability =
       buildModelReliability(
         'general',
         records
       );
 
-    $('detectorReliability').innerHTML =
+
+    $('detectorReliability')
+      .innerHTML =
       [
         'tmr',
         'e5',
@@ -5215,52 +7758,85 @@ function renderCalibrationLab() {
       ]
         .map(
           detector => {
+
             const item =
               reliability[
                 detector
               ];
 
+
             const metrics =
               item.global.metrics;
 
+
             return `
+
 <div class="ev">
+
   <div class="evTop">
-    <span>${escapeHTML(detector.toUpperCase())}</span>
-    <span>${item.global.samples} samples</span>
+
+    <span>
+      ${escapeHTML(
+        detector.toUpperCase()
+      )}
+    </span>
+
+    <span>
+      ${item.global.samples} samples
+    </span>
+
   </div>
 
   <small>
-    Base reliability ${Number(item.base).toFixed(2)}
-    · AI weight ${Number(item.ai.weight).toFixed(2)}
-    · Human weight ${Number(item.human.weight).toFixed(2)}
+    Base reliability ${Number(
+      item.base
+    ).toFixed(2)}
+    · AI weight ${Number(
+      item.ai.weight
+    ).toFixed(2)}
+    · Human weight ${Number(
+      item.human.weight
+    ).toFixed(2)}
     · Accuracy ${metrics.selectiveAccuracy}%
     · Coverage ${metrics.coverage}%
     · FPR ${metrics.fpr}%
     · FNR ${metrics.fnr}%
   </small>
+
 </div>
+
 `;
           }
         )
         .join('');
   }
 
+
   if (
     $('domainPerformance')
   ) {
+
     const domains =
       domainPerformance(
         records
       );
 
-    $('domainPerformance').innerHTML =
+
+    $('domainPerformance')
+      .innerHTML =
       domains.length
         ? domains
             .map(
               item => `
+
 <div class="metric">
-  <span>${escapeHTML(item.domain)}</span>
+
+  <span>
+    ${escapeHTML(
+      item.domain
+    )}
+  </span>
+
   <b>
     ${item.total} samples
     · Acc ${item.selectiveAccuracy}%
@@ -5268,17 +7844,29 @@ function renderCalibrationLab() {
     · FPR ${item.fpr}%
     · FNR ${item.fnr}%
   </b>
+
 </div>
+
 `
             )
             .join('')
         : `
+
 <div class="metric">
-  <span>No domain data</span>
-  <b>—</b>
+
+  <span>
+    No domain data
+  </span>
+
+  <b>
+    —
+  </b>
+
 </div>
+
 `;
   }
+
 
   renderInspector(
     'falsePositiveInspector',
@@ -5288,6 +7876,7 @@ function renderCalibrationLab() {
     'No known HUMAN sample has been classified as AI.'
   );
 
+
   renderInspector(
     'falseNegativeInspector',
     falseNegativeRecords(
@@ -5295,6 +7884,7 @@ function renderCalibrationLab() {
     ),
     'No known AI sample has been classified as HUMAN.'
   );
+
 
   renderInspector(
     'abstentionInspector',
@@ -5307,255 +7897,17 @@ function renderCalibrationLab() {
 
 
 /* ============================================================
-   BULK IMPORT PARSER
-============================================================ */
-
-function parseBulkImport(
-  raw
-) {
-  const lines =
-    String(
-      raw || ''
-    )
-      .split(
-        /\n/
-      )
-      .map(
-        line =>
-          line.trim()
-      )
-      .filter(Boolean);
-
-  const samples = [];
-  const errors = [];
-
-  lines.forEach(
-    (
-      line,
-      index
-    ) => {
-      try {
-        const item =
-          JSON.parse(
-            line
-          );
-
-        const truth =
-          String(
-            item.truth ||
-            ''
-          )
-            .trim()
-            .toUpperCase();
-
-        if (
-          ![
-            'AI',
-            'HUMAN',
-            'MIXED',
-            'UNKNOWN'
-          ].includes(
-            truth
-          )
-        ) {
-          throw new Error(
-            'Invalid truth label'
-          );
-        }
-
-        const sampleText =
-          String(
-            item.text ||
-            ''
-          )
-            .trim();
-
-        if (
-          wordCount(
-            sampleText
-          ) < 30
-        ) {
-          throw new Error(
-            'Sample text must contain at least 30 words'
-          );
-        }
-
-        samples.push({
-          truth,
-
-          source:
-            String(
-              item.source ||
-              ''
-            ),
-
-          domain:
-            String(
-              item.domain ||
-              'auto'
-            ),
-
-          text:
-            sampleText
-        });
-
-      } catch (error) {
-        errors.push(
-          `Line ${index + 1}: ${error.message}`
-        );
-      }
-    }
-  );
-
-  return {
-    samples,
-    errors
-  };
-}
-
-
-/* ============================================================
-   BULK IMPORT VALIDATION
-============================================================ */
-
-function validateBulkImport() {
-  const raw =
-    $('bulkImportText')
-      ?.value ||
-    '';
-
-  const parsed =
-    parseBulkImport(
-      raw
-    );
-
-  if (
-    $('bulkImportCount')
-  ) {
-    $('bulkImportCount').textContent =
-      `${parsed.samples.length} samples detected`;
-  }
-
-  if (
-    $('bulkImportResult')
-  ) {
-    $('bulkImportResult')
-      .classList
-      .remove(
-        'hidden'
-      );
-
-    $('bulkImportResult').innerHTML =
-      parsed.errors.length
-        ? `
-<b>${parsed.samples.length} valid samples.</b><br><br>
-${parsed.errors
-  .map(
-    error =>
-      escapeHTML(
-        error
-      )
-  )
-  .join(
-    '<br>'
-  )}
-`
-        : `
-<b>${parsed.samples.length} valid samples.</b><br>
-No formatting errors detected.
-`;
-  }
-
-  return parsed;
-}
-
-
-/* ============================================================
-   BULK IMPORT
-============================================================ */
-
-function importBulkSamples() {
-  const parsed =
-    validateBulkImport();
-
-  if (
-    !parsed.samples.length
-  ) {
-    alert(
-      'No valid samples to import.'
-    );
-
-    return;
-  }
-
-  const queue =
-    loadCalibrationQueue();
-
-  const imported =
-    parsed.samples.map(
-      sample => ({
-        importId:
-          `IMP-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2, 9)}`,
-
-        status:
-          'PENDING',
-
-        createdAt:
-          nowISO(),
-
-        attempts:
-          0,
-
-        ...sample
-      })
-    );
-
-  saveCalibrationQueue([
-    ...queue,
-    ...imported
-  ]);
-
-  if (
-    $('bulkImportResult')
-  ) {
-    $('bulkImportResult').innerHTML =
-      `<b>${imported.length} samples added to the calibration queue.</b><br>
-       Press Run Calibration Queue to analyze them automatically.`;
-  }
-
-  if (
-    $('bulkImportText')
-  ) {
-    $('bulkImportText').value =
-      '';
-  }
-
-  if (
-    $('bulkImportCount')
-  ) {
-    $('bulkImportCount').textContent =
-      '0 samples detected';
-  }
-
-  renderDatasetManager();
-
-  alert(
-    `${imported.length} samples imported successfully.`
-  );
-}
-
-
-/* ============================================================
-   JSON EXPORT
+   EXPORT JSON
 ============================================================ */
 
 function exportBenchmarkJSON() {
+
   const records =
     loadBench();
 
+
   const payload = {
+
     version:
       VERSION,
 
@@ -5591,6 +7943,7 @@ function exportBenchmarkJSON() {
     records
   };
 
+
   const blob =
     new Blob(
       [
@@ -5606,30 +7959,38 @@ function exportBenchmarkJSON() {
       }
     );
 
+
   const url =
     URL.createObjectURL(
       blob
     );
+
 
   const anchor =
     document.createElement(
       'a'
     );
 
+
   anchor.href =
     url;
 
+
   anchor.download =
-    `AI-Trace-V64-Benchmark-${Date.now()}.json`;
+    `AI-Trace-V66-Benchmark-${Date.now()}.json`;
+
 
   document.body
     .appendChild(
       anchor
     );
 
+
   anchor.click();
 
+
   anchor.remove();
+
 
   URL.revokeObjectURL(
     url
@@ -5638,14 +7999,17 @@ function exportBenchmarkJSON() {
 
 
 /* ============================================================
-   CSV EXPORT
+   EXPORT CSV
 ============================================================ */
 
 function exportBenchmarkCSV() {
+
   const records =
     loadBench();
 
+
   const headers = [
+
     'id',
     'truth',
     'source',
@@ -5669,52 +8033,79 @@ function exportBenchmarkCSV() {
     'segmentRange'
   ];
 
+
   const csvEscape =
     value => {
+
       const text =
         String(
           value ??
           ''
         );
 
+
       if (
         /[",\n]/.test(
           text
         )
       ) {
+
         return `"${text.replace(
           /"/g,
           '""'
         )}"`;
       }
 
+
       return text;
     };
+
 
   const rows =
     records.map(
       record => [
+
         record.id,
+
         record.truth,
+
         record.source,
+
         record.version,
+
         record.timestamp ||
-          record.savedAt,
+        record.savedAt,
+
         record.domain,
+
         record.language,
+
         record.words,
+
         record.scores?.tmr,
+
         record.scores?.e5,
+
         record.scores?.modern,
+
         record.human?.score,
+
         record.consensus?.raw,
+
         record.consensus?.calibrated,
+
         record.consensus?.sufficiency?.score,
+
         record.consensus?.confidence,
+
         record.consensus?.uncertainty,
+
         record.consensus?.verdict,
+
         record.consensus?.modelAgreement?.agreement,
+
         record.consensus?.modelSpread,
+
         record.consensus?.segmentRange
       ]
         .map(
@@ -5723,47 +8114,62 @@ function exportBenchmarkCSV() {
         .join(',')
     );
 
+
   const csv =
     [
-      headers.join(','),
+      headers.join(
+        ','
+      ),
       ...rows
-    ].join(
-      '\n'
-    );
+    ]
+      .join(
+        '\n'
+      );
+
 
   const blob =
     new Blob(
-      [csv],
+      [
+        csv
+      ],
       {
         type:
           'text/csv;charset=utf-8'
       }
     );
 
+
   const url =
     URL.createObjectURL(
       blob
     );
+
 
   const anchor =
     document.createElement(
       'a'
     );
 
+
   anchor.href =
     url;
 
+
   anchor.download =
-    `AI-Trace-V64-Benchmark-${Date.now()}.csv`;
+    `AI-Trace-V66-Benchmark-${Date.now()}.csv`;
+
 
   document.body
     .appendChild(
       anchor
     );
 
+
   anchor.click();
 
+
   anchor.remove();
+
 
   URL.revokeObjectURL(
     url
@@ -5778,13 +8184,16 @@ function exportBenchmarkCSV() {
 function saveHistory(
   scan
 ) {
+
   const history =
     loadJSON(
       HISTORY_KEY,
       []
     );
 
+
   history.push({
+
     timestamp:
       scan.timestamp,
 
@@ -5810,12 +8219,38 @@ function saveHistory(
       scan.consensus
   });
 
+
   saveJSON(
     HISTORY_KEY,
     history.slice(
       -100
     )
   );
+}
+
+
+/* ============================================================
+   OPEN DATASET IMPORTER
+============================================================ */
+
+function openDatasetImporter() {
+
+  $('bulkImportPanel')
+    ?.classList
+    .remove(
+      'hidden'
+    );
+
+
+  $('bulkImportPanel')
+    ?.scrollIntoView({
+
+      behavior:
+        'smooth',
+
+      block:
+        'start'
+    });
 }
 
 
@@ -5841,14 +8276,18 @@ $('clear')
   ?.addEventListener(
     'click',
     () => {
+
       if (
         textEl
       ) {
+
         textEl.value =
           '';
       }
 
+
       updateCount();
+
 
       $('report')
         ?.classList
@@ -5866,25 +8305,14 @@ $('scan')
   );
 
 
+/* ============================================================
+   DATASET IMPORTER EVENTS
+============================================================ */
+
 $('openBulkImport')
   ?.addEventListener(
     'click',
-    () => {
-      $('bulkImportPanel')
-        ?.classList
-        .remove(
-          'hidden'
-        );
-
-      $('bulkImportPanel')
-        ?.scrollIntoView({
-          behavior:
-            'smooth',
-
-          block:
-            'start'
-        });
-    }
+    openDatasetImporter
   );
 
 
@@ -5892,6 +8320,7 @@ $('closeBulkImport')
   ?.addEventListener(
     'click',
     () => {
+
       $('bulkImportPanel')
         ?.classList
         .add(
@@ -5901,23 +8330,74 @@ $('closeBulkImport')
   );
 
 
+$('chooseDatasetFile')
+  ?.addEventListener(
+    'click',
+    () => {
+
+      $('datasetFileInput')
+        ?.click();
+    }
+  );
+
+
+$('datasetFileInput')
+  ?.addEventListener(
+    'change',
+    async event => {
+
+      const file =
+        event.target
+          ?.files?.[
+            0
+          ];
+
+
+      if (
+        !file
+      ) {
+
+        return;
+      }
+
+
+      await handleDatasetFileSelection(
+        file
+      );
+    }
+  );
+
+
+$('clearDatasetFile')
+  ?.addEventListener(
+    'click',
+    clearSelectedDatasetFile
+  );
+
+
 $('bulkImportText')
   ?.addEventListener(
     'input',
     () => {
+
+      const raw =
+        $('bulkImportText')
+          ?.value ||
+        '';
+
+
       const parsed =
-        parseBulkImport(
-          $('bulkImportText')
-            ?.value ||
+        parseDatasetContent(
+          raw,
+          selectedDatasetFile
+            ?.name ||
           ''
         );
 
-      if (
-        $('bulkImportCount')
-      ) {
-        $('bulkImportCount').textContent =
-          `${parsed.samples.length} samples detected`;
-      }
+
+      renderImportPreview(
+        parsed
+      );
     }
   );
 
@@ -5936,34 +8416,14 @@ $('importBulkSamples')
   );
 
 
+/* ============================================================
+   CALIBRATION WORKER EVENTS
+============================================================ */
+
 $('runCalibrationQueue')
   ?.addEventListener(
     'click',
-    () => {
-      if (
-        workerRunning &&
-        workerPaused
-      ) {
-        workerPaused =
-          false;
-
-        if (
-          $('pauseCalibrationQueue')
-        ) {
-          $('pauseCalibrationQueue').textContent =
-            'Pause';
-        }
-
-        setWorkerUI(
-          'Running',
-          'Calibration worker resumed.'
-        );
-
-        return;
-      }
-
-      runCalibrationWorker();
-    }
+    runCalibrationWorker
   );
 
 
@@ -5973,6 +8433,10 @@ $('pauseCalibrationQueue')
     toggleCalibrationPause
   );
 
+
+/* ============================================================
+   EXPORT EVENTS
+============================================================ */
 
 $('exportBenchmarkJSON')
   ?.addEventListener(
@@ -5988,31 +8452,41 @@ $('exportBenchmarkCSV')
   );
 
 
+/* ============================================================
+   CLEAR BENCHMARK
+============================================================ */
+
 $('clearBenchmark')
   ?.addEventListener(
     'click',
     () => {
+
       const confirmation =
         confirm(
-          'Delete all V6.4 benchmark records from this browser?'
+          'Delete all AI Trace benchmark records from this browser?'
         );
+
 
       if (
         !confirmation
       ) {
+
         return;
       }
+
 
       localStorage.removeItem(
         BENCH_KEY
       );
 
+
       renderDatasetManager();
 
       renderCalibrationLab();
 
+
       alert(
-        'V6.4 benchmark dataset deleted.'
+        'Benchmark dataset deleted.'
       );
     }
   );
@@ -6022,12 +8496,16 @@ $('clearBenchmark')
    DEVELOPER API
 ============================================================ */
 
-window.AITraceV64 = {
+window.AITraceV66 = {
+
   report() {
+
     const records =
       loadBench();
 
+
     return {
+
       version:
         VERSION,
 
@@ -6061,56 +8539,85 @@ window.AITraceV64 = {
     };
   },
 
+
   reliability(
-    domain = 'general'
+    domain =
+      'general'
   ) {
+
     return buildModelReliability(
       domain,
       loadBench()
     );
   },
 
+
   queue() {
+
     return loadCalibrationQueue();
   },
 
+
   history() {
+
     return loadJSON(
       HISTORY_KEY,
       []
     );
   },
 
+
   runQueue() {
+
     return runCalibrationWorker();
   },
 
-  pauseQueue() {
-    workerPaused =
-      true;
 
-    setWorkerUI(
-      'Paused',
-      'Worker will pause before the next sample.'
-    );
+  pauseQueue() {
+
+    if (
+      workerRunning
+    ) {
+
+      workerPaused =
+        true;
+
+
+      setWorkerUI(
+        'Paused',
+        'Calibration worker will pause before the next sample.'
+      );
+    }
   },
+
 
   resumeQueue() {
-    workerPaused =
-      false;
 
-    setWorkerUI(
-      'Running',
-      'Worker resumed.'
-    );
+    if (
+      workerRunning
+    ) {
+
+      workerPaused =
+        false;
+
+
+      setWorkerUI(
+        'Running',
+        'Calibration worker resumed.'
+      );
+    }
   },
 
+
   stopQueue() {
-    workerAbortRequested =
+
+    workerStopRequested =
       true;
+
 
     workerPaused =
       false;
+
 
     setWorkerUI(
       'Stopping',
@@ -6118,84 +8625,84 @@ window.AITraceV64 = {
     );
   },
 
+
   retryFailed() {
+
     const queue =
       loadCalibrationQueue();
+
 
     for (
       const item
       of queue
     ) {
+
       if (
-        item.status === 'FAILED'
+        item.status ===
+        'FAILED'
       ) {
+
         item.status =
           'PENDING';
+
 
         item.error =
           null;
       }
     }
 
+
     saveCalibrationQueue(
       queue
     );
 
+
     renderDatasetManager();
   },
 
-  exportJSON() {
-    exportBenchmarkJSON();
-  },
-
-  exportCSV() {
-    exportBenchmarkCSV();
-  },
 
   clearQueue() {
+
     const confirmation =
       confirm(
-        'Delete the entire calibration queue?'
+        'Delete the full calibration queue?'
       );
+
 
     if (
       !confirmation
     ) {
+
       return;
     }
 
+
     localStorage.removeItem(
-      IMPORT_KEY
+      QUEUE_KEY
     );
+
 
     renderDatasetManager();
   },
 
-  clearBenchmark() {
-    const confirmation =
-      confirm(
-        'Delete the full benchmark dataset?'
-      );
-
-    if (
-      !confirmation
-    ) {
-      return;
-    }
-
-    localStorage.removeItem(
-      BENCH_KEY
-    );
-
-    renderDatasetManager();
-
-    renderCalibrationLab();
-  },
 
   clearHistory() {
+
     localStorage.removeItem(
       HISTORY_KEY
     );
+  },
+
+
+  exportJSON() {
+
+    exportBenchmarkJSON();
+  },
+
+
+  exportCSV() {
+
+    exportBenchmarkCSV();
   }
 };
 
@@ -6206,9 +8713,25 @@ window.AITraceV64 = {
 
 recoverInterruptedQueue();
 
+
 updateCount();
 
+
+renderDatasetFileInfo();
+
+
+renderImportPreview({
+
+  samples:
+    [],
+
+  errors:
+    []
+});
+
+
 renderDatasetManager();
+
 
 renderCalibrationLab();
 
@@ -6220,14 +8743,19 @@ const initialQueue =
 if (
   initialQueue.total
 ) {
+
   const processed =
     initialQueue.complete +
     initialQueue.failed;
 
+
   setWorkerUI(
+
     initialQueue.pending
       ? 'Ready'
-      : 'Complete',
+      : initialQueue.failed
+        ? 'Complete with errors'
+        : 'Complete',
 
     `${initialQueue.pending} pending · ${initialQueue.complete} complete · ${initialQueue.failed} failed`,
 

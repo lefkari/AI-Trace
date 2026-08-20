@@ -2,115 +2,489 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#050914">
-  <title>AI Trace V5 — Digital Authenticity Intelligence</title>
-  <link rel="stylesheet" href="style.css">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <meta
+    name="theme-color"
+    content="#050914"
+  >
+
+  <title>
+    AI Trace V6.2 — Digital Authenticity Intelligence
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
 </head>
+
 <body>
+
 <div class="shell">
+
+  <!-- ======================================================
+       NAVIGATION
+  ======================================================= -->
+
   <nav>
+
     <div class="brand">
-      <div class="mark">A</div>
-      <div>
-        <b>AI TRACE</b>
-        <small>Digital Authenticity Intelligence</small>
+
+      <div class="mark">
+        A
       </div>
+
+      <div>
+
+        <b>
+          AI TRACE
+        </b>
+
+        <small>
+          Digital Authenticity Intelligence
+        </small>
+
+      </div>
+
     </div>
-    <span class="pill">V5 • SMART 3-MODEL ENGINE</span>
+
+    <span class="pill">
+      V6.2 • ADAPTIVE RELIABILITY ENGINE
+    </span>
+
   </nav>
 
+
+  <!-- ======================================================
+       HERO
+  ======================================================= -->
+
   <header>
-    <span class="over">TRACE DNA™ • TEXT ENGINE V5</span>
-    <h1>Know what’s real.<br>Know what’s AI.</h1>
-    <p>Evidence-first AI text analysis using multiple local models, domain context, human counter-evidence and an abstention layer designed to reduce false accusations.</p>
+
+    <span class="over">
+      TRACE DNA™ • TEXT ENGINE V6.2
+    </span>
+
+    <h1>
+      Know what’s real.
+      <br>
+      Know what’s AI.
+    </h1>
+
+    <p>
+      Evidence-first AI text analysis using adaptive detector
+      reliability, domain-aware consensus, human counter-evidence
+      and calibrated abstention.
+    </p>
+
   </header>
 
+
+  <!-- ======================================================
+       SCANNER
+  ======================================================= -->
+
   <section class="scanner panel">
+
     <div class="tabs">
-      <button class="tab active">Text</button>
-      <button class="tab" disabled>Image <i>next</i></button>
-      <button class="tab" disabled>Audio <i>later</i></button>
-      <button class="tab" disabled>Video <i>later</i></button>
+
+      <button
+        class="tab active"
+        type="button"
+      >
+        Text
+      </button>
+
+      <button
+        class="tab"
+        type="button"
+        disabled
+      >
+        Image
+        <i>next</i>
+      </button>
+
+      <button
+        class="tab"
+        type="button"
+        disabled
+      >
+        Audio
+        <i>later</i>
+      </button>
+
+      <button
+        class="tab"
+        type="button"
+        disabled
+      >
+        Video
+        <i>later</i>
+      </button>
+
     </div>
+
 
     <div class="inputHead">
-      <b>Content to analyze</b>
-      <span id="modelState" class="state">Smart engine standby</span>
+
+      <b>
+        Content to analyze
+      </b>
+
+      <span
+        id="modelState"
+        class="state"
+      >
+        Adaptive engine standby
+      </span>
+
     </div>
 
-    <textarea id="text" maxlength="40000" placeholder="Paste English text here. 150+ words is recommended."></textarea>
+
+    <textarea
+      id="text"
+      maxlength="40000"
+      placeholder="Paste English text here. 150+ words is recommended."
+      spellcheck="true"
+    ></textarea>
+
 
     <div class="actions">
-      <span id="count">0 words</span>
-      <button id="demo" class="soft">Load AI demo</button>
-      <button id="clear" class="soft">Clear</button>
-      <button id="scan" class="cta">Run Smart Scan →</button>
+
+      <span id="count">
+        0 words
+      </span>
+
+      <button
+        id="demo"
+        class="soft"
+        type="button"
+      >
+        Load AI demo
+      </button>
+
+      <button
+        id="clear"
+        class="soft"
+        type="button"
+      >
+        Clear
+      </button>
+
+      <button
+        id="scan"
+        class="cta"
+        type="button"
+      >
+        Run Smart Scan →
+      </button>
+
     </div>
 
-    <div id="progress" class="progress hidden">
-      <div><span id="bar"></span></div>
-      <small id="progressText">Preparing…</small>
+
+    <div
+      id="progress"
+      class="progress hidden"
+    >
+
+      <div>
+        <span id="bar"></span>
+      </div>
+
+      <small id="progressText">
+        Preparing…
+      </small>
+
     </div>
+
   </section>
 
-  <section id="report" class="hidden">
+
+  <!-- ======================================================
+       REPORT
+  ======================================================= -->
+
+  <section
+    id="report"
+    class="hidden"
+  >
+
+
+    <!-- ====================================================
+         TOP REPORT
+    ===================================================== -->
+
     <div class="reportGrid">
+
       <div class="panel scoreCard">
-        <span class="over">CALIBRATED AI SIGNAL</span>
+
+        <span class="over">
+          CALIBRATED AI SIGNAL
+        </span>
+
+
         <div class="scoreRow">
-          <strong id="score">--</strong>
+
+          <strong id="score">
+            --
+          </strong>
+
           <div>
-            <b id="verdict">--</b>
-            <small id="confidence">--</small>
+
+            <b id="verdict">
+              --
+            </b>
+
+            <small id="confidence">
+              --
+            </small>
+
           </div>
+
         </div>
-        <div class="scale"><span id="scaleFill"></span></div>
-        <p id="explain"></p>
+
+
+        <div class="scale">
+
+          <span id="scaleFill"></span>
+
+        </div>
+
+
+        <p id="explain">
+        </p>
+
       </div>
+
+
+      <!-- ==================================================
+           TRACE DNA
+      =================================================== -->
 
       <div class="panel dna">
-        <span class="over">TRACE DNA™</span>
-        <div class="dnaRow"><span>Human evidence</span><div><i id="humanBar"></i></div><b id="humanVal">--</b></div>
-        <div class="dnaRow"><span>AI evidence</span><div><i id="aiBar"></i></div><b id="aiVal">--</b></div>
-        <div class="dnaRow"><span>Uncertainty</span><div><i id="uncertainBar"></i></div><b id="uncertainVal">--</b></div>
+
+        <span class="over">
+          TRACE DNA™
+        </span>
+
+
+        <div class="dnaRow">
+
+          <span>
+            Human evidence
+          </span>
+
+          <div>
+            <i id="humanBar"></i>
+          </div>
+
+          <b id="humanVal">
+            --
+          </b>
+
+        </div>
+
+
+        <div class="dnaRow">
+
+          <span>
+            AI evidence
+          </span>
+
+          <div>
+            <i id="aiBar"></i>
+          </div>
+
+          <b id="aiVal">
+            --
+          </b>
+
+        </div>
+
+
+        <div class="dnaRow">
+
+          <span>
+            Uncertainty
+          </span>
+
+          <div>
+            <i id="uncertainBar"></i>
+          </div>
+
+          <b id="uncertainVal">
+            --
+          </b>
+
+        </div>
+
       </div>
+
     </div>
+
+
+    <!-- ====================================================
+         EVIDENCE + METRICS
+    ===================================================== -->
 
     <div class="reportGrid lower">
-      <div class="panel">
-        <div class="sectionTitle">
-          <div>
-            <span class="over">EVIDENCE</span>
-            <h2>Why this result?</h2>
-          </div>
-          <span id="engineBadge" class="pill"></span>
-        </div>
-        <div id="evidence" class="evidence"></div>
-      </div>
+
+
+      <!-- ==================================================
+           EVIDENCE
+      =================================================== -->
 
       <div class="panel">
-        <span class="over">DOCUMENT PROFILE</span>
-        <h2>Analysis metrics</h2>
-        <div id="metrics" class="metrics"></div>
+
+        <div class="sectionTitle">
+
+          <div>
+
+            <span class="over">
+              EVIDENCE
+            </span>
+
+            <h2>
+              Why this result?
+            </h2>
+
+          </div>
+
+
+          <span
+            id="engineBadge"
+            class="pill"
+          >
+          </span>
+
+        </div>
+
+
+        <div
+          id="evidence"
+          class="evidence"
+        >
+        </div>
+
       </div>
+
+
+      <!-- ==================================================
+           DOCUMENT PROFILE
+      =================================================== -->
+
+      <div class="panel">
+
+        <span class="over">
+          DOCUMENT PROFILE
+        </span>
+
+        <h2>
+          Analysis metrics
+        </h2>
+
+        <div
+          id="metrics"
+          class="metrics"
+        >
+        </div>
+
+      </div>
+
     </div>
+
+
+    <!-- ====================================================
+         TRACE MAP
+    ===================================================== -->
 
     <div class="panel segmentsPanel">
-      <span class="over">TRACE MAP</span>
-      <h2>Where does AI appear most likely?</h2>
-      <p class="sub">Chunks are analyzed with the fast detector. Mixed or unstable documents automatically reduce confidence and can trigger the third model.</p>
-      <div id="segments" class="segments"></div>
+
+      <span class="over">
+        TRACE MAP
+      </span>
+
+      <h2>
+        Where does AI appear most likely?
+      </h2>
+
+      <p class="sub">
+        Text chunks are analyzed independently. Mixed or unstable
+        documents automatically reduce confidence and can trigger
+        deeper model verification.
+      </p>
+
+      <div
+        id="segments"
+        class="segments"
+      >
+      </div>
+
     </div>
+
+
+    <!-- ====================================================
+         SAFETY NOTICE
+    ===================================================== -->
 
     <div class="warning">
-      <b>Evidence, not accusation.</b> AI Trace estimates machine-generated-text signals. It does not prove authorship and should not be used alone for disciplinary, employment, legal, academic-integrity or other high-stakes decisions.
+
+      <b>
+        Evidence, not accusation.
+      </b>
+
+      AI Trace estimates patterns associated with
+      machine-generated text.
+
+      It does not prove authorship and should not be used alone
+      for disciplinary, employment, legal, academic-integrity
+      or other high-stakes decisions.
+
     </div>
+
+
+    <!--
+      IMPORTANT:
+
+      The V6.2 Benchmark / Reliability panel does NOT need
+      to be hard-coded here.
+
+      app.js will automatically create and insert it
+      underneath this section.
+    -->
+
   </section>
 
-  <footer>AI TRACE V5 · Smart local inference · Zero paid API</footer>
+
+  <!-- ======================================================
+       FOOTER
+  ======================================================= -->
+
+  <footer>
+
+    AI TRACE V6.2
+    · Adaptive Reliability Engine
+    · Local browser inference
+    · Zero paid API
+
+  </footer>
+
 </div>
 
-<script type="module" src="app.js"></script>
+
+<!-- ========================================================
+     JAVASCRIPT
+========================================================= -->
+
+<script
+  type="module"
+  src="app.js"
+></script>
+
 </body>
 </html>

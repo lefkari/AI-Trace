@@ -21,7 +21,7 @@
   >
 
   <title>
-    AI Trace V6.4 — Digital Authenticity Intelligence
+    AI Trace V6.5 — Digital Authenticity Intelligence
   </title>
 
   <link
@@ -74,7 +74,7 @@
       </span>
 
       <span class="pill">
-        V6.4 • BATCH CALIBRATION ENGINE
+        V6.5 • ADAPTIVE CALIBRATION ENGINE
       </span>
 
     </div>
@@ -90,7 +90,7 @@
   <header>
 
     <span class="over">
-      TRACE DNA™ • TEXT ENGINE V6.4
+      TRACE DNA™ • TEXT ENGINE V6.5
     </span>
 
     <h1>
@@ -100,9 +100,8 @@
 
     <p>
       Evidence-first AI text analysis using multiple local detectors,
-      adaptive reliability weighting, domain context, human
-      counter-evidence, conservative abstention and automated
-      calibration benchmarking.
+      adaptive reliability weighting, human counter-evidence,
+      domain awareness and conservative abstention.
     </p>
 
   </header>
@@ -231,7 +230,8 @@
 
 
   <!-- ======================================================
-       REPORT
+       SCAN REPORT
+       ONLY THIS PART IS HIDDEN BEFORE A SCAN
   ======================================================= -->
 
   <section
@@ -240,14 +240,10 @@
   >
 
 
-    <!-- ====================================================
-         SCORE + TRACE DNA
-    ===================================================== -->
+    <!-- SCORE + TRACE DNA -->
 
     <div class="reportGrid">
 
-
-      <!-- SCORE -->
 
       <div class="panel scoreCard">
 
@@ -287,8 +283,6 @@
       </div>
 
 
-
-      <!-- TRACE DNA -->
 
       <div class="panel dna">
 
@@ -353,14 +347,10 @@
 
 
 
-    <!-- ====================================================
-         EVIDENCE + PROFILE
-    ===================================================== -->
+    <!-- EVIDENCE + PROFILE -->
 
     <div class="reportGrid lower">
 
-
-      <!-- EVIDENCE -->
 
       <div class="panel">
 
@@ -396,8 +386,6 @@
 
 
 
-      <!-- PROFILE -->
-
       <div class="panel">
 
         <span class="over">
@@ -420,9 +408,7 @@
 
 
 
-    <!-- ====================================================
-         TRACE MAP
-    ===================================================== -->
+    <!-- TRACE MAP -->
 
     <div class="panel segmentsPanel">
 
@@ -435,9 +421,9 @@
       </h2>
 
       <p class="sub">
-        Text segments are analyzed independently. Mixed or unstable
-        evidence reduces confidence and can trigger deeper model
-        verification.
+        Text segments are analyzed independently.
+        Mixed or unstable evidence reduces confidence
+        and can trigger deeper model verification.
       </p>
 
 
@@ -450,612 +436,7 @@
 
 
 
-    <!-- ====================================================
-         DATASET MANAGER
-    ===================================================== -->
-
-    <section
-      id="datasetManager"
-      class="panel labPanel"
-    >
-
-      <div class="sectionTitle">
-
-        <div>
-
-          <span class="over">
-            V6.4 CALIBRATION DATASET
-          </span>
-
-          <h2>
-            Dataset Manager
-          </h2>
-
-        </div>
-
-
-        <span
-          id="datasetStatusBadge"
-          class="pill"
-        >
-          COLLECTING
-        </span>
-
-      </div>
-
-
-      <p class="sub">
-        Known-origin AI and HUMAN samples are used to evaluate
-        detector reliability, false positives, false negatives,
-        coverage and abstention behavior.
-      </p>
-
-
-
-      <!-- DATASET SUMMARY -->
-
-      <div
-        id="datasetSummary"
-        class="metrics datasetSummary"
-      >
-
-        <div class="metric">
-          <span>Total records</span>
-          <b id="datasetTotal">0</b>
-        </div>
-
-        <div class="metric">
-          <span>Binary samples</span>
-          <b id="datasetBinary">0</b>
-        </div>
-
-        <div class="metric">
-          <span>Known AI</span>
-          <b id="datasetAI">0</b>
-        </div>
-
-        <div class="metric">
-          <span>Known HUMAN</span>
-          <b id="datasetHuman">0</b>
-        </div>
-
-        <div class="metric">
-          <span>MIXED</span>
-          <b id="datasetMixed">0</b>
-        </div>
-
-        <div class="metric">
-          <span>UNKNOWN</span>
-          <b id="datasetUnknown">0</b>
-        </div>
-
-        <div class="metric">
-          <span>Domains</span>
-          <b id="datasetDomains">0</b>
-        </div>
-
-      </div>
-
-
-
-      <!-- ==================================================
-           DATASET ACTIONS
-      =================================================== -->
-
-      <div class="datasetActions">
-
-        <button
-          id="openBulkImport"
-          class="soft"
-          type="button"
-        >
-          Bulk Import
-        </button>
-
-
-        <button
-          id="runCalibrationQueue"
-          class="cta"
-          type="button"
-        >
-          Run Calibration Queue
-        </button>
-
-
-        <button
-          id="pauseCalibrationQueue"
-          class="soft"
-          type="button"
-        >
-          Pause
-        </button>
-
-
-        <button
-          id="exportBenchmarkJSON"
-          class="soft"
-          type="button"
-        >
-          Export JSON
-        </button>
-
-
-        <button
-          id="exportBenchmarkCSV"
-          class="soft"
-          type="button"
-        >
-          Export CSV
-        </button>
-
-
-        <button
-          id="clearBenchmark"
-          class="dangerSoft"
-          type="button"
-        >
-          Clear Dataset
-        </button>
-
-      </div>
-
-
-
-      <!-- ==================================================
-           BATCH WORKER
-      =================================================== -->
-
-      <div
-        id="batchWorkerStatus"
-        class="batchWorkerStatus"
-      >
-
-        <div class="ev">
-
-          <div class="evTop">
-
-            <span>
-              Batch Calibration Worker
-            </span>
-
-            <span id="batchWorkerState">
-              Idle
-            </span>
-
-          </div>
-
-
-          <small id="batchWorkerText">
-            Import benchmark samples, then run the calibration queue.
-          </small>
-
-
-          <div class="batchMeter">
-
-            <i id="batchWorkerBar"></i>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-
-      <!-- RECENT RECORDS -->
-
-      <div class="labSection">
-
-        <h3>
-          Recent benchmark records
-        </h3>
-
-
-        <div
-          id="datasetRecords"
-          class="evidence"
-        >
-
-          <div class="ev">
-
-            <small>
-              No benchmark records yet.
-            </small>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-
-    <!-- ====================================================
-         BULK IMPORT PANEL
-    ===================================================== -->
-
-    <section
-      id="bulkImportPanel"
-      class="panel labPanel hidden"
-    >
-
-      <div class="sectionTitle">
-
-        <div>
-
-          <span class="over">
-            V6.4 BULK DATASET IMPORT
-          </span>
-
-          <h2>
-            Import benchmark samples
-          </h2>
-
-        </div>
-
-
-        <button
-          id="closeBulkImport"
-          class="soft smallButton"
-          type="button"
-        >
-          Close
-        </button>
-
-      </div>
-
-
-      <p class="sub">
-        Paste one JSON object per line. Every object must contain
-        a truth label and the original text. Source and domain are
-        optional but strongly recommended.
-      </p>
-
-
-
-      <!-- FORMAT EXAMPLE -->
-
-      <div class="warning">
-
-        <b>
-          Format
-        </b>
-
-        <br><br>
-
-        One sample per line:
-
-        <br><br>
-
-        <code>
-          {"truth":"HUMAN","source":"Known human essay","domain":"general","text":"Your text here..."}
-        </code>
-
-        <br><br>
-
-        <code>
-          {"truth":"AI","source":"ChatGPT","domain":"general","text":"Your AI-generated text here..."}
-        </code>
-
-      </div>
-
-
-
-      <!-- IMPORT TEXTAREA -->
-
-      <textarea
-        id="bulkImportText"
-        class="bulkTextarea"
-        maxlength="500000"
-        placeholder='{"truth":"HUMAN","source":"Known human source","domain":"general","text":"Sample text here..."}
-
-{"truth":"AI","source":"ChatGPT","domain":"general","text":"Sample text here..."}'
-      ></textarea>
-
-
-
-      <!-- IMPORT ACTIONS -->
-
-      <div class="bulkActions">
-
-        <span id="bulkImportCount">
-          0 samples detected
-        </span>
-
-
-        <button
-          id="validateBulkImport"
-          class="soft"
-          type="button"
-        >
-          Validate
-        </button>
-
-
-        <button
-          id="importBulkSamples"
-          class="cta"
-          type="button"
-        >
-          Import Samples
-        </button>
-
-      </div>
-
-
-
-      <!-- IMPORT RESULT -->
-
-      <div
-        id="bulkImportResult"
-        class="importResult hidden"
-      ></div>
-
-    </section>
-
-
-
-    <!-- ====================================================
-         CALIBRATION LAB
-    ===================================================== -->
-
-    <section
-      id="calibrationLab"
-      class="panel labPanel"
-    >
-
-      <div class="sectionTitle">
-
-        <div>
-
-          <span class="over">
-            V6.4 CALIBRATION LAB
-          </span>
-
-          <h2>
-            Reliability Dashboard
-          </h2>
-
-        </div>
-
-
-        <span
-          id="calibrationStatusBadge"
-          class="pill"
-        >
-          COLLECTING
-        </span>
-
-      </div>
-
-
-      <p class="sub">
-        Detector weights only become meaningfully adaptive after
-        enough known-origin samples are collected. Small datasets
-        remain protected from overfitting.
-      </p>
-
-
-
-      <!-- READINESS -->
-
-      <div class="labSection">
-
-        <h3>
-          Calibration readiness
-        </h3>
-
-
-        <div
-          id="calibrationReadiness"
-          class="evidence"
-        >
-
-          <div class="ev">
-
-            <div class="evTop">
-
-              <span>
-                COLLECTING
-              </span>
-
-              <span>
-                LEARNING LIMITED
-              </span>
-
-            </div>
-
-
-            <small>
-              More known AI and HUMAN samples are required.
-            </small>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-
-      <!-- ENSEMBLE METRICS -->
-
-      <div class="labSection">
-
-        <h3>
-          Ensemble performance
-        </h3>
-
-
-        <div
-          id="ensembleMetrics"
-          class="metrics"
-        ></div>
-
-      </div>
-
-
-
-      <!-- DETECTOR RELIABILITY -->
-
-      <div class="labSection">
-
-        <h3>
-          Detector reliability
-        </h3>
-
-
-        <div
-          id="detectorReliability"
-          class="evidence"
-        ></div>
-
-      </div>
-
-
-
-      <!-- DOMAIN PERFORMANCE -->
-
-      <div class="labSection">
-
-        <h3>
-          Domain performance
-        </h3>
-
-
-        <div
-          id="domainPerformance"
-          class="metrics"
-        ></div>
-
-      </div>
-
-
-
-      <!-- FALSE POSITIVES -->
-
-      <div class="labSection">
-
-        <h3>
-          False-positive inspector
-        </h3>
-
-        <p class="sub">
-          Known HUMAN samples that were classified as AI.
-        </p>
-
-
-        <div
-          id="falsePositiveInspector"
-          class="evidence"
-        >
-
-          <div class="ev">
-
-            <small>
-              No false positives recorded.
-            </small>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-
-      <!-- FALSE NEGATIVES -->
-
-      <div class="labSection">
-
-        <h3>
-          False-negative inspector
-        </h3>
-
-        <p class="sub">
-          Known AI samples that were classified as HUMAN.
-        </p>
-
-
-        <div
-          id="falseNegativeInspector"
-          class="evidence"
-        >
-
-          <div class="ev">
-
-            <small>
-              No false negatives recorded.
-            </small>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-
-      <!-- ABSTENTIONS -->
-
-      <div class="labSection">
-
-        <h3>
-          Abstention inspector
-        </h3>
-
-        <p class="sub">
-          Known-origin samples where the engine returned
-          INCONCLUSIVE instead of forcing an attribution.
-        </p>
-
-
-        <div
-          id="abstentionInspector"
-          class="evidence"
-        >
-
-          <div class="ev">
-
-            <small>
-              No abstentions recorded.
-            </small>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </section>
-
-
-
-    <!-- ====================================================
-         DEVELOPMENT NOTICE
-    ===================================================== -->
-
-    <div class="warning devWarning">
-
-      <b>
-        Development benchmark only.
-      </b>
-
-      Accuracy, precision, recall, specificity, false-positive
-      rates and other metrics displayed here describe only the
-      known-origin samples stored in this browser.
-
-      They are not production accuracy claims.
-
-    </div>
-
-
-
-    <!-- ====================================================
-         SAFETY NOTICE
-    ===================================================== -->
+    <!-- SCAN SAFETY NOTICE -->
 
     <div class="warning">
 
@@ -1075,14 +456,681 @@
 
 
   <!-- ======================================================
+       DATASET MANAGER
+       ALWAYS VISIBLE
+  ======================================================= -->
+
+  <section
+    id="datasetManager"
+    class="panel labPanel"
+  >
+
+    <div class="sectionTitle">
+
+      <div>
+
+        <span class="over">
+          V6.5 CALIBRATION DATASET
+        </span>
+
+        <h2>
+          Dataset Manager
+        </h2>
+
+      </div>
+
+
+      <span
+        id="datasetStatusBadge"
+        class="pill"
+      >
+        COLLECTING
+      </span>
+
+    </div>
+
+
+    <p class="sub">
+      Known-origin AI and HUMAN samples are used to evaluate
+      detector reliability, false positives, false negatives,
+      coverage and abstention behavior.
+    </p>
+
+
+
+    <!-- DATASET SUMMARY -->
+
+    <div
+      id="datasetSummary"
+      class="metrics datasetSummary"
+    >
+
+      <div class="metric">
+
+        <span>
+          Total records
+        </span>
+
+        <b id="datasetTotal">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          Binary samples
+        </span>
+
+        <b id="datasetBinary">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          Known AI
+        </span>
+
+        <b id="datasetAI">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          Known HUMAN
+        </span>
+
+        <b id="datasetHuman">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          MIXED
+        </span>
+
+        <b id="datasetMixed">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          UNKNOWN
+        </span>
+
+        <b id="datasetUnknown">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          Domains
+        </span>
+
+        <b id="datasetDomains">
+          0
+        </b>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- DATASET BUTTONS -->
+
+    <div class="datasetActions">
+
+      <button
+        id="openBulkImport"
+        class="soft"
+        type="button"
+      >
+        Bulk Import
+      </button>
+
+
+      <button
+        id="runCalibrationQueue"
+        class="cta"
+        type="button"
+      >
+        Run Calibration Queue
+      </button>
+
+
+      <button
+        id="pauseCalibrationQueue"
+        class="soft"
+        type="button"
+      >
+        Pause
+      </button>
+
+
+      <button
+        id="exportBenchmarkJSON"
+        class="soft"
+        type="button"
+      >
+        Export JSON
+      </button>
+
+
+      <button
+        id="exportBenchmarkCSV"
+        class="soft"
+        type="button"
+      >
+        Export CSV
+      </button>
+
+
+      <button
+        id="clearBenchmark"
+        class="dangerSoft"
+        type="button"
+      >
+        Clear Dataset
+      </button>
+
+    </div>
+
+
+
+    <!-- BATCH WORKER -->
+
+    <div
+      id="batchWorkerStatus"
+      class="batchWorkerStatus"
+    >
+
+      <div class="ev">
+
+        <div class="evTop">
+
+          <span>
+            Batch Calibration Worker
+          </span>
+
+          <span id="batchWorkerState">
+            Idle
+          </span>
+
+        </div>
+
+
+        <small id="batchWorkerText">
+          Import benchmark samples, then run the calibration queue.
+        </small>
+
+
+        <div class="batchMeter">
+          <i id="batchWorkerBar"></i>
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- RECENT RECORDS -->
+
+    <div class="labSection">
+
+      <h3>
+        Recent benchmark records
+      </h3>
+
+
+      <div
+        id="datasetRecords"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <small>
+            No benchmark records yet.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+
+  <!-- ======================================================
+       BULK IMPORT
+       ALWAYS AVAILABLE
+  ======================================================= -->
+
+  <section
+    id="bulkImportPanel"
+    class="panel labPanel hidden"
+  >
+
+    <div class="sectionTitle">
+
+      <div>
+
+        <span class="over">
+          V6.5 BULK DATASET IMPORT
+        </span>
+
+        <h2>
+          Import benchmark samples
+        </h2>
+
+      </div>
+
+
+      <button
+        id="closeBulkImport"
+        class="soft smallButton"
+        type="button"
+      >
+        Close
+      </button>
+
+    </div>
+
+
+    <p class="sub">
+      Paste one JSON object per line.
+      Every object must contain a truth label and original text.
+      Source and domain are recommended.
+    </p>
+
+
+
+    <!-- FORMAT -->
+
+    <div class="warning">
+
+      <b>
+        Format
+      </b>
+
+      <br><br>
+
+      One sample per line:
+
+      <br><br>
+
+      <code>
+        {"truth":"HUMAN","source":"Known human source","domain":"general","text":"Human text here..."}
+      </code>
+
+      <br><br>
+
+      <code>
+        {"truth":"AI","source":"ChatGPT","domain":"general","text":"AI text here..."}
+      </code>
+
+    </div>
+
+
+
+    <!-- TEXTAREA -->
+
+    <textarea
+      id="bulkImportText"
+      class="bulkTextarea"
+      maxlength="500000"
+      placeholder='{"truth":"HUMAN","source":"Known human source","domain":"general","text":"Sample text here..."}
+
+{"truth":"AI","source":"ChatGPT","domain":"general","text":"Sample text here..."}'
+    ></textarea>
+
+
+
+    <!-- ACTIONS -->
+
+    <div class="bulkActions">
+
+      <span id="bulkImportCount">
+        0 samples detected
+      </span>
+
+
+      <button
+        id="validateBulkImport"
+        class="soft"
+        type="button"
+      >
+        Validate
+      </button>
+
+
+      <button
+        id="importBulkSamples"
+        class="cta"
+        type="button"
+      >
+        Import Samples
+      </button>
+
+    </div>
+
+
+
+    <div
+      id="bulkImportResult"
+      class="importResult hidden"
+    ></div>
+
+  </section>
+
+
+
+  <!-- ======================================================
+       CALIBRATION LAB
+       ALWAYS VISIBLE
+  ======================================================= -->
+
+  <section
+    id="calibrationLab"
+    class="panel labPanel"
+  >
+
+    <div class="sectionTitle">
+
+      <div>
+
+        <span class="over">
+          V6.5 CALIBRATION LAB
+        </span>
+
+        <h2>
+          Reliability Dashboard
+        </h2>
+
+      </div>
+
+
+      <span
+        id="calibrationStatusBadge"
+        class="pill"
+      >
+        COLLECTING
+      </span>
+
+    </div>
+
+
+    <p class="sub">
+      Detector weights become more meaningful only after enough
+      known-origin benchmark samples have been collected.
+      Small datasets remain protected from overfitting.
+    </p>
+
+
+
+    <!-- READINESS -->
+
+    <div class="labSection">
+
+      <h3>
+        Calibration readiness
+      </h3>
+
+
+      <div
+        id="calibrationReadiness"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <div class="evTop">
+
+            <span>
+              COLLECTING
+            </span>
+
+            <span>
+              LEARNING LIMITED
+            </span>
+
+          </div>
+
+
+          <small>
+            More known AI and HUMAN samples are required.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ENSEMBLE -->
+
+    <div class="labSection">
+
+      <h3>
+        Ensemble performance
+      </h3>
+
+
+      <div
+        id="ensembleMetrics"
+        class="metrics"
+      ></div>
+
+    </div>
+
+
+
+    <!-- RELIABILITY -->
+
+    <div class="labSection">
+
+      <h3>
+        Detector reliability
+      </h3>
+
+
+      <div
+        id="detectorReliability"
+        class="evidence"
+      ></div>
+
+    </div>
+
+
+
+    <!-- DOMAIN -->
+
+    <div class="labSection">
+
+      <h3>
+        Domain performance
+      </h3>
+
+
+      <div
+        id="domainPerformance"
+        class="metrics"
+      ></div>
+
+    </div>
+
+
+
+    <!-- FALSE POSITIVES -->
+
+    <div class="labSection">
+
+      <h3>
+        False-positive inspector
+      </h3>
+
+      <p class="sub">
+        Known HUMAN samples that were classified as AI.
+      </p>
+
+
+      <div
+        id="falsePositiveInspector"
+        class="evidence"
+      >
+
+        <div class="ev">
+          <small>
+            No false positives recorded.
+          </small>
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- FALSE NEGATIVES -->
+
+    <div class="labSection">
+
+      <h3>
+        False-negative inspector
+      </h3>
+
+      <p class="sub">
+        Known AI samples that were classified as HUMAN.
+      </p>
+
+
+      <div
+        id="falseNegativeInspector"
+        class="evidence"
+      >
+
+        <div class="ev">
+          <small>
+            No false negatives recorded.
+          </small>
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ABSTENTIONS -->
+
+    <div class="labSection">
+
+      <h3>
+        Abstention inspector
+      </h3>
+
+      <p class="sub">
+        Known-origin samples where the engine returned
+        INCONCLUSIVE instead of forcing a verdict.
+      </p>
+
+
+      <div
+        id="abstentionInspector"
+        class="evidence"
+      >
+
+        <div class="ev">
+          <small>
+            No abstentions recorded.
+          </small>
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+
+  <!-- ======================================================
+       DEVELOPMENT NOTICE
+  ======================================================= -->
+
+  <div class="warning devWarning">
+
+    <b>
+      Development benchmark only.
+    </b>
+
+    Accuracy, precision, recall, specificity,
+    false-positive rates and other metrics shown here describe
+    only the known-origin benchmark samples stored locally
+    in this browser.
+
+    They are not production accuracy claims.
+
+  </div>
+
+
+
+  <!-- ======================================================
+       GLOBAL SAFETY NOTICE
+  ======================================================= -->
+
+  <div class="warning">
+
+    <b>
+      Evidence, not accusation.
+    </b>
+
+    AI Trace estimates patterns associated with machine-generated
+    text. It does not prove authorship and should not be used alone
+    for disciplinary, employment, legal, academic-integrity or
+    other high-stakes decisions.
+
+  </div>
+
+
+
+  <!-- ======================================================
        FOOTER
   ======================================================= -->
 
   <footer>
 
-    AI TRACE V6.4
+    AI TRACE V6.5
     · Adaptive local inference
-    · Batch Calibration Worker
+    · Calibration Lab
     · Zero paid API
 
   </footer>

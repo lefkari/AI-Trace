@@ -1,21 +1,30 @@
 /*
   ============================================================
-  AI TRACE V6.2 — ADAPTIVE RELIABILITY ENGINE
-  PART 1 / 3
-
-  Core:
-  - TMR
-  - E5-small
-  - Conditional ModernBERT
-  - Human counter-evidence
-  - Domain detection
-  - Segment analysis
-  - Benchmark-driven reliability
-  - Domain-aware detector reliability
-  - Minimum-sample protection
-  - Zero paid API
+  AI TRACE V6.3 — CALIBRATION DATASET ENGINE
+  COMPLETE APP.JS
   ============================================================
+
+  Features
+  ------------------------------------------------------------
+  - TMR detector
+  - E5-small detector
+  - Conditional ModernBERT judge
+  - Segment analysis
+  - Human counter-evidence
+  - Domain estimation
+  - Conservative abstention
+  - Adaptive detector reliability
+  - Leave-one-out benchmark reliability
+  - Bulk benchmark import
+  - Dataset manager
+  - Calibration dashboard
+  - False-positive inspector
+  - False-negative inspector
+  - Abstention inspector
+  - JSON / CSV export
+  - Zero paid API
 */
+
 
 import {
   pipeline,
@@ -23,20 +32,19 @@ import {
 } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
 
 
+/* ============================================================
+   TRANSFORMERS CONFIG
+============================================================ */
+
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
 
 /* ============================================================
-   VERSION
+   VERSION / MODELS
 ============================================================ */
 
-const VERSION = '6.2';
-
-
-/* ============================================================
-   MODELS
-============================================================ */
+const VERSION = '6.3';
 
 const MODEL_TMR =
   'onnx-community/tmr-ai-text-detector-ONNX';
@@ -53,25 +61,17 @@ const MODEL_MODERN =
 ============================================================ */
 
 const BENCH_KEY =
-  'aiTraceBenchmarkV62';
+  'aiTraceBenchmarkV63';
 
 const HISTORY_KEY =
-  'aiTraceHistoryV62';
+  'aiTraceHistoryV63';
 
-
-const LEGACY_BENCH_KEYS = [
-  'aiTraceBenchmarkV61',
-  'aiTraceBenchmarkV6',
-  'aiTraceBenchmarkV54',
-  'aiTraceBenchmarkV53',
-  'aiTraceBenchmarkV52',
-  'aiTraceBenchmarkV51',
-  'aiTraceBenchmarkV44'
-];
+const IMPORT_KEY =
+  'aiTraceImportedDatasetV63';
 
 
 /* ============================================================
-   MODEL CACHE
+   MODEL INSTANCES
 ============================================================ */
 
 let tmrModel = null;
@@ -88,24 +88,6 @@ const $ = id =>
 
 const textEl =
   $('text');
-
-
-/* ============================================================
-   DEVICE
-============================================================ */
-
-function isMobileDevice() {
-
-  return (
-    window.matchMedia(
-      '(max-width: 768px)'
-    ).matches ||
-
-    /Android|iPhone|iPad|iPod/i.test(
-      navigator.userAgent
-    )
-  );
-}
 
 
 /* ============================================================
@@ -128,92 +110,93 @@ function clamp(
 }
 
 
-function average(values) {
+function nowISO() {
+
+  return new Date()
+    .toISOString();
+}
+
+
+function wordCount(
+  value
+) {
+
+  if (
+    !String(value || '')
+      .trim()
+  ) {
+
+    return 0;
+  }
+
+  return String(value)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .length;
+}
+
+
+function average(
+  values
+) {
 
   const usable =
     values.filter(
       Number.isFinite
     );
 
-  if (!usable.length) {
+  if (
+    !usable.length
+  ) {
+
     return 0;
   }
 
   return usable.reduce(
-    (sum, value) =>
-      sum + value,
+    (
+      total,
+      value
+    ) =>
+      total + value,
     0
   ) / usable.length;
 }
 
 
-function weightedAverage(
-  values,
-  weights
+function median(
+  values
 ) {
-
-  let numerator = 0;
-  let denominator = 0;
-
-  for (
-    let i = 0;
-    i < values.length;
-    i++
-  ) {
-
-    const value =
-      Number(values[i]);
-
-    const weight =
-      Number(weights[i]);
-
-    if (
-      Number.isFinite(value) &&
-      Number.isFinite(weight) &&
-      weight > 0
-    ) {
-
-      numerator +=
-        value * weight;
-
-      denominator +=
-        weight;
-    }
-  }
-
-  if (!denominator) {
-    return 50;
-  }
-
-  return numerator /
-    denominator;
-}
-
-
-function median(values) {
 
   const usable =
     values
       .filter(
         Number.isFinite
       )
-      .slice()
       .sort(
-        (a, b) =>
+        (
+          a,
+          b
+        ) =>
           a - b
       );
 
-  if (!usable.length) {
+  if (
+    !usable.length
+  ) {
+
     return 50;
   }
 
   const middle =
     Math.floor(
-      usable.length / 2
+      usable.length /
+      2
     );
 
   if (
-    usable.length % 2
+    usable.length %
+    2
   ) {
 
     return usable[
@@ -232,14 +215,19 @@ function median(values) {
 }
 
 
-function standardDeviation(values) {
+function standardDeviation(
+  values
+) {
 
   const usable =
     values.filter(
       Number.isFinite
     );
 
-  if (!usable.length) {
+  if (
+    !usable.length
+  ) {
+
     return 0;
   }
 
@@ -262,31 +250,15 @@ function standardDeviation(values) {
 }
 
 
-function wordCount(value) {
-
-  const clean =
-    String(
-      value || ''
-    )
-      .trim();
-
-  if (!clean) {
-    return 0;
-  }
-
-  return clean
-    .split(/\s+/)
-    .filter(Boolean)
-    .length;
-}
-
-
-function percentage(
+function safePercent(
   numerator,
   denominator
 ) {
 
-  if (!denominator) {
+  if (
+    !denominator
+  ) {
+
     return 0;
   }
 
@@ -298,11 +270,14 @@ function percentage(
 }
 
 
-function escapeHTML(value) {
+function escapeHTML(
+  value
+) {
 
-  return String(value).replace(
+  return String(
+    value ?? ''
+  ).replace(
     /[&<>"']/g,
-
     character =>
       ({
         '&':
@@ -326,60 +301,6 @@ function escapeHTML(value) {
 }
 
 
-function countMatches(
-  value,
-  regex
-) {
-
-  return (
-    String(value)
-      .match(regex) ||
-    []
-  ).length;
-}
-
-
-function nowISO() {
-
-  return new Date()
-    .toISOString();
-}
-
-
-function detectLanguage(value) {
-
-  const latin =
-    (
-      value.match(
-        /[A-Za-z]/g
-      ) || []
-    ).length;
-
-  const total =
-    (
-      value.match(
-        /\p{L}/gu
-      ) || []
-    ).length;
-
-  if (!total) {
-    return 'Unknown';
-  }
-
-  return (
-    latin /
-    total >
-    0.82
-  )
-    ? 'English'
-    : 'Non-English';
-}
-
-
-/* ============================================================
-   STORAGE HELPERS
-============================================================ */
-
 function loadJSON(
   key,
   fallback = []
@@ -392,7 +313,10 @@ function loadJSON(
         key
       );
 
-    if (!raw) {
+    if (
+      !raw
+    ) {
+
       return fallback;
     }
 
@@ -400,10 +324,13 @@ function loadJSON(
       raw
     );
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.warn(
-      `Could not read ${key}:`,
+      'Storage read failed:',
+      key,
       error
     );
 
@@ -414,7 +341,7 @@ function loadJSON(
 
 function saveJSON(
   key,
-  data
+  value
 ) {
 
   try {
@@ -422,16 +349,19 @@ function saveJSON(
     localStorage.setItem(
       key,
       JSON.stringify(
-        data
+        value
       )
     );
 
     return true;
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.warn(
-      `Could not save ${key}:`,
+      'Storage write failed:',
+      key,
       error
     );
 
@@ -440,24 +370,75 @@ function saveJSON(
 }
 
 
-/* ============================================================
-   UI
-============================================================ */
+function detectLanguage(
+  value
+) {
 
-function updateCount() {
+  const latin =
+    (
+      value.match(
+        /[A-Za-z]/g
+      ) ||
+      []
+    ).length;
+
+  const allLetters =
+    (
+      value.match(
+        /\p{L}/gu
+      ) ||
+      []
+    ).length;
 
   if (
-    !$('count')
+    !allLetters
   ) {
-    return;
+
+    return 'Unknown';
   }
 
-  $('count').textContent =
-    `${wordCount(
-      textEl?.value || ''
-    )} words`;
+  return (
+    latin /
+    allLetters >=
+    0.82
+  )
+    ? 'English'
+    : 'Non-English';
 }
 
+
+function countMatches(
+  value,
+  regex
+) {
+
+  return (
+    value.match(
+      regex
+    ) ||
+    []
+  ).length;
+}
+
+
+function isMobileDevice() {
+
+  return (
+    window.matchMedia(
+      '(max-width: 768px)'
+    ).matches ||
+
+    /Android|iPhone|iPad|iPod/i
+      .test(
+        navigator.userAgent
+      )
+  );
+}
+
+
+/* ============================================================
+   UI HELPERS
+============================================================ */
 
 function setProgress(
   percent,
@@ -470,7 +451,9 @@ function setProgress(
       'hidden'
     );
 
-  if ($('bar')) {
+  if (
+    $('bar')
+  ) {
 
     $('bar').style.width =
       `${clamp(
@@ -478,9 +461,12 @@ function setProgress(
       )}%`;
   }
 
-  if ($('progressText')) {
+  if (
+    $('progressText')
+  ) {
 
-    $('progressText').textContent =
+    $('progressText')
+      .textContent =
       label;
   }
 }
@@ -503,90 +489,77 @@ function hideProgress() {
 }
 
 
-function setState(label) {
+function setState(
+  value
+) {
 
   if (
     $('modelState')
   ) {
 
-    $('modelState').textContent =
-      label;
+    $('modelState')
+      .textContent =
+      value;
   }
 }
 
 
+function updateCount() {
+
+  if (
+    !textEl ||
+    !$('count')
+  ) {
+
+    return;
+  }
+
+  $('count').textContent =
+    `${wordCount(
+      textEl.value
+    )} words`;
+}
+
+
+/* ============================================================
+   DEMO
+============================================================ */
+
 function loadDemo() {
 
-  if (!textEl) {
+  if (
+    !textEl
+  ) {
+
     return;
   }
 
   textEl.value =
 `Artificial intelligence is transforming modern society by changing how people communicate, work, learn, and make decisions. Recent advances in machine learning have allowed software systems to generate text, analyze images, summarize documents, write computer code, and assist with complex research tasks.
 
-One major advantage of artificial intelligence is its ability to process large amounts of information quickly. Businesses can automate repetitive workflows, researchers can examine large datasets, and individuals can use intelligent tools to improve productivity. These systems can identify patterns that might be difficult for humans to notice manually.
+One major advantage of artificial intelligence is its ability to process information at a scale that would be difficult for humans to match. Organizations can use automated systems to identify patterns in large datasets, detect anomalies, and improve operational efficiency.
 
-At the same time, artificial intelligence introduces important challenges. Generated content may contain incorrect information, fabricated details, or biased conclusions. As AI-generated text becomes more natural, it can also become increasingly difficult to determine whether a document was written by a person or produced by a machine.
+However, artificial intelligence also introduces new challenges. Machine-generated content may contain factual errors, misleading statements, or fabricated information. As generated media becomes more realistic, determining the origin of digital content becomes increasingly difficult.
 
-Reliable AI detection therefore requires more than a single score. A responsible system should combine independent signals, communicate uncertainty, evaluate disagreement, test itself on known samples, and avoid making strong claims when the available evidence is weak.`;
+Reliable AI detection will therefore depend on careful evaluation, transparent limitations, and continuous testing across many different types of content. A useful detection system should provide evidence rather than absolute claims and should acknowledge uncertainty whenever the available signals disagree.`;
 
   updateCount();
 }
 
 
 /* ============================================================
-   UI EVENTS
-============================================================ */
-
-textEl?.addEventListener(
-  'input',
-  updateCount
-);
-
-
-$('clear')?.addEventListener(
-  'click',
-  () => {
-
-    if (textEl) {
-      textEl.value = '';
-    }
-
-    updateCount();
-
-    $('report')
-      ?.classList
-      .add(
-        'hidden'
-      );
-  }
-);
-
-
-$('demo')?.addEventListener(
-  'click',
-  loadDemo
-);
-
-
-$('scan')?.addEventListener(
-  'click',
-  runSmartScan
-);
-
-
-/* ============================================================
    DOCUMENT PROFILE
 ============================================================ */
 
-function createProfile(value) {
+function createProfile(
+  value
+) {
 
   const words =
     value
       .trim()
       .split(/\s+/)
       .filter(Boolean);
-
 
   const sentences =
     value
@@ -599,7 +572,6 @@ function createProfile(value) {
       )
       .filter(Boolean);
 
-
   const paragraphs =
     value
       .split(
@@ -611,7 +583,6 @@ function createProfile(value) {
       )
       .filter(Boolean);
 
-
   const lines =
     value
       .split(
@@ -622,25 +593,6 @@ function createProfile(value) {
           line.trim()
       )
       .filter(Boolean);
-
-
-  const sentenceLengths =
-    sentences.map(
-      sentence =>
-        wordCount(
-          sentence
-        )
-    );
-
-
-  const paragraphLengths =
-    paragraphs.map(
-      paragraph =>
-        wordCount(
-          paragraph
-        )
-    );
-
 
   const cleanedWords =
     words
@@ -655,53 +607,60 @@ function createProfile(value) {
       )
       .filter(Boolean);
 
+  const sentenceLengths =
+    sentences.map(
+      sentence =>
+        wordCount(
+          sentence
+        )
+    );
 
-  const avgSentence =
+  const paragraphLengths =
+    paragraphs.map(
+      paragraph =>
+        wordCount(
+          paragraph
+        )
+    );
+
+  const averageSentenceLength =
     average(
       sentenceLengths
     );
 
-
-  const sentenceSD =
+  const sentenceDeviation =
     standardDeviation(
       sentenceLengths
     );
 
-
-  const punctuationPatterns = [
-    /,/g,
-    /;/g,
-    /:/g,
-    /[—–-]/g,
-    /["“”‘’']/g,
-    /[()]/g
-  ];
-
-
   const punctuationTypes =
-    punctuationPatterns.filter(
-      regex =>
-        (
-          value.match(
-            regex
-          ) || []
-        ).length > 0
-    ).length;
-
+    [
+      /,/g,
+      /;/g,
+      /:/g,
+      /[—–-]/g,
+      /["“”‘’']/g,
+      /[()]/g
+    ]
+      .filter(
+        regex =>
+          (
+            value.match(
+              regex
+            ) ||
+            []
+          ).length >
+          0
+      )
+      .length;
 
   const quoteCount =
-    countMatches(
-      value,
-      /["“”‘’]/g
-    );
-
-
-  const semicolonCount =
-    countMatches(
-      value,
-      /;/g
-    );
-
+    (
+      value.match(
+        /["“”‘’]/g
+      ) ||
+      []
+    ).length;
 
   const firstPerson =
     countMatches(
@@ -709,60 +668,30 @@ function createProfile(value) {
       /\b(I|me|my|mine|we|us|our|ours)\b/gi
     );
 
-
   const contractions =
     countMatches(
       value,
       /\b\w+(?:n't|'re|'ve|'ll|'d|'m|'s)\b/gi
     );
 
-
-  const subjectiveMarkers =
-    countMatches(
-      value,
-      /\b(I think|I believe|I suppose|I feel|in my view|perhaps|maybe|it seems to me|I do not know|I remember)\b/gi
-    );
-
-
   const transitions =
     countMatches(
       value,
-      /\b(however|moreover|furthermore|therefore|overall|ultimately|consequently|in conclusion|additionally|nevertheless|as a result|on the other hand)\b/gi
+      /\b(however|moreover|furthermore|therefore|overall|ultimately|consequently|additionally|nevertheless|in conclusion|as a result)\b/gi
     );
-
-
-  const titleReferences =
-    countMatches(
-      value,
-      /\b(Mr|Mrs|Miss|Ms|Sir|Lady|Lord|Dr)\.?\s+[A-Z][a-z]+/g
-    );
-
-
-  const narrativeMarkers =
-    countMatches(
-      value,
-      /\b(she|he|her|his|hers|him|father|mother|daughter|son|sister|brother|friend|marriage|family|house|young|years|woman|man)\b/gi
-    );
-
-
-  const literaryVocabulary =
-    countMatches(
-      value,
-      /\b(affection|disposition|esteem|governess|intimacy|temper|authority|misfortune|existence|indulgent|remembrance|caresses|enjoyments|judgment|vex|distress|attached|acquaintance|gentleman|lady)\b/gi
-    );
-
 
   const dialogueLines =
     lines.filter(
       line =>
-        /^[“"'—-]/.test(
-          line
-        ) ||
-        /[”"']$/.test(
-          line
-        )
+        /^[“"'—-]/
+          .test(
+            line
+          ) ||
+        /[”"']$/
+          .test(
+            line
+          )
     ).length;
-
 
   return {
 
@@ -775,28 +704,17 @@ function createProfile(value) {
     paragraphs:
       paragraphs.length,
 
-    lineBreaks:
-      Math.max(
-        0,
-        lines.length - 1
-      ),
+    lines:
+      lines.length,
 
-    averageLineLength:
-      lines.length
-        ? value.length /
-          lines.length
-        : value.length,
+    averageSentenceLength,
 
-    averageSentenceLength:
-      avgSentence,
-
-    sentenceDeviation:
-      sentenceSD,
+    sentenceDeviation,
 
     sentenceBurstiness:
-      avgSentence
-        ? sentenceSD /
-          avgSentence
+      averageSentenceLength
+        ? sentenceDeviation /
+          averageSentenceLength
         : 0,
 
     paragraphDeviation:
@@ -817,23 +735,19 @@ function createProfile(value) {
 
     quoteCount,
 
-    semicolonCount,
-
-    dialogueLines,
-
     firstPerson,
 
     contractions,
 
-    subjectiveMarkers,
-
     transitions,
 
-    titleReferences,
+    dialogueLines,
 
-    narrativeMarkers,
-
-    literaryVocabulary
+    averageLineLength:
+      lines.length
+        ? value.length /
+          lines.length
+        : value.length
   };
 }
 
@@ -850,145 +764,76 @@ function estimateDomain(
   const content =
     value.toLowerCase();
 
+  const signals = {
 
-  const scores = {
+    books:
+      profile.quoteCount >= 5 ||
+      profile.dialogueLines >= 2
+        ? 5
+        : 0,
+
+    poetry:
+      profile.lines >= 7 &&
+      profile.averageLineLength < 65
+        ? 5
+        : 0,
 
     academic:
       countMatches(
         content,
-        /\b(method|methods|results|conclusion|study|participants|dataset|experiment|analysis|significant|hypothesis|abstract|research|findings|methodology)\b/g
-      ) * 2,
-
-
-    recipes:
-      countMatches(
-        content,
-        /\b(cup|cups|tablespoon|teaspoon|ingredients|preheat|oven|bake|stir|chop|minutes|serve|flour|sugar)\b/g
-      ) * 2,
-
-
-    reviews:
-      countMatches(
-        content,
-        /\b(review|rating|stars|recommend|purchase|product|quality|price|experience|bought|customer)\b/g
-      ) * 2,
-
-
-    reddit:
-      countMatches(
-        content,
-        /\b(aita|tldr|subreddit|upvote|downvote|throwaway|imo|lol|op)\b/g
-      ) * 3,
-
-
-    encyclopedia:
-      countMatches(
-        content,
-        /\b(was born|refers to|located in|population|history of|known for|founded|species|geography|is a type of)\b/g
-      ) * 2,
-
+        /\b(method|methodology|results|participants|dataset|experiment|analysis|hypothesis|significant|research|abstract|conclusion)\b/g
+      ),
 
     news:
       countMatches(
         content,
-        /\b(reuters|reported|according to|officials|government|minister|president|announced|agency|spokesperson|statement)\b/g
-      ) * 2,
+        /\b(reuters|reported|officials|government|minister|president|announced|agency|according to)\b/g
+      ),
 
+    reviews:
+      countMatches(
+        content,
+        /\b(review|rating|stars|recommend|purchase|product|quality|price)\b/g
+      ),
 
-    poetry:
-      0,
+    social:
+      countMatches(
+        content,
+        /\b(imo|lol|reddit|subreddit|tldr|edit:|upvote|downvote|thread)\b/g
+      ),
 
-
-    books:
-      0
+    recipe:
+      countMatches(
+        content,
+        /\b(cup|tablespoon|teaspoon|ingredients|oven|bake|stir|chop|minutes|serve)\b/g
+      )
   };
 
-
-  if (
-    profile.lineBreaks >= 5 &&
-    profile.averageLineLength < 70
-  ) {
-
-    scores.poetry += 8;
-  }
-
-
-  scores.books +=
-    profile.titleReferences * 3;
-
-
-  scores.books +=
-    Math.min(
-      12,
-      profile.literaryVocabulary * 2
-    );
-
-
-  scores.books +=
-    Math.min(
-      8,
-      Math.floor(
-        profile.narrativeMarkers / 3
-      )
-    );
-
-
-  if (
-    profile.averageSentenceLength >= 25
-  ) {
-
-    scores.books += 3;
-  }
-
-
-  if (
-    profile.semicolonCount >= 2
-  ) {
-
-    scores.books += 3;
-  }
-
-
-  if (
-    profile.quoteCount >= 4
-  ) {
-
-    scores.books += 3;
-  }
-
-
-  if (
-    profile.dialogueLines >= 2
-  ) {
-
-    scores.books += 5;
-  }
-
-
-  if (
-    profile.sentenceBurstiness >= 0.45
-  ) {
-
-    scores.books += 2;
-  }
-
+  const sorted =
+    Object.entries(
+      signals
+    )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b[1] -
+          a[1]
+      );
 
   const [
     domain,
     score
   ] =
-    Object.entries(
-      scores
-    )
-      .sort(
-        (a, b) =>
-          b[1] - a[1]
-      )[0];
-
+    sorted[0] ||
+    [
+      'general',
+      0
+    ];
 
   if (
-    !score ||
-    score < 4
+    score < 2
   ) {
 
     return {
@@ -997,30 +842,20 @@ function estimateDomain(
         'general',
 
       confidence:
-        'low',
-
-      score:
-        score || 0,
-
-      scores
+        'low'
     };
   }
-
 
   return {
 
     domain,
 
     confidence:
-      score >= 12
+      score >= 5
         ? 'high'
-        : score >= 7
+        : score >= 3
           ? 'medium'
-          : 'low',
-
-    score,
-
-    scores
+          : 'low'
   };
 }
 
@@ -1029,7 +864,7 @@ function estimateDomain(
    HUMAN COUNTER-EVIDENCE
 ============================================================ */
 
-function calculateHumanEvidence(
+function humanEvidence(
   profile,
   domain
 ) {
@@ -1040,7 +875,8 @@ function calculateHumanEvidence(
 
 
   if (
-    profile.sentenceBurstiness >= 0.68
+    profile.sentenceBurstiness >=
+    0.70
   ) {
 
     score += 20;
@@ -1050,7 +886,8 @@ function calculateHumanEvidence(
     );
 
   } else if (
-    profile.sentenceBurstiness >= 0.45
+    profile.sentenceBurstiness >=
+    0.45
   ) {
 
     score += 12;
@@ -1062,7 +899,8 @@ function calculateHumanEvidence(
 
 
   if (
-    profile.punctuationTypes >= 5
+    profile.punctuationTypes >=
+    5
   ) {
 
     score += 12;
@@ -1072,7 +910,8 @@ function calculateHumanEvidence(
     );
 
   } else if (
-    profile.punctuationTypes >= 3
+    profile.punctuationTypes >=
+    3
   ) {
 
     score += 6;
@@ -1080,27 +919,8 @@ function calculateHumanEvidence(
 
 
   if (
-    profile.quoteCount >= 8 ||
-    profile.dialogueLines >= 2
-  ) {
-
-    score += 16;
-
-    reasons.push(
-      'Dialogue or quotation structure'
-    );
-
-  } else if (
-    profile.quoteCount >= 3
-  ) {
-
-    score += 7;
-  }
-
-
-  if (
-    profile.firstPerson >= 4 ||
-    profile.subjectiveMarkers >= 2
+    profile.firstPerson >=
+    4
   ) {
 
     score += 10;
@@ -1110,19 +930,20 @@ function calculateHumanEvidence(
     );
 
   } else if (
-    profile.firstPerson > 0 ||
-    profile.subjectiveMarkers > 0
+    profile.firstPerson >
+    0
   ) {
 
-    score += 4;
+    score += 5;
   }
 
 
   if (
-    profile.contractions >= 4
+    profile.contractions >=
+    3
   ) {
 
-    score += 6;
+    score += 8;
 
     reasons.push(
       'Natural contraction usage'
@@ -1131,8 +952,25 @@ function calculateHumanEvidence(
 
 
   if (
-    profile.paragraphDeviation >= 25 &&
-    profile.paragraphs >= 3
+    profile.quoteCount >=
+    6 ||
+    profile.dialogueLines >=
+    2
+  ) {
+
+    score += 14;
+
+    reasons.push(
+      'Dialogue or quotation structure'
+    );
+  }
+
+
+  if (
+    profile.paragraphDeviation >=
+    18 &&
+    profile.paragraphs >=
+    3
   ) {
 
     score += 8;
@@ -1144,83 +982,23 @@ function calculateHumanEvidence(
 
 
   if (
-    profile.lexicalDiversity >= 0.65
+    profile.transitions >=
+    4
   ) {
 
-    score += 7;
-
-  } else if (
-    profile.lexicalDiversity >= 0.55
-  ) {
-
-    score += 4;
+    score -= 6;
   }
 
 
   if (
-    profile.semicolonCount >= 2
-  ) {
-
-    score += 5;
-
-    reasons.push(
-      'Complex punctuation rhythm'
-    );
-  }
-
-
-  if (
-    profile.titleReferences >= 2
-  ) {
-
-    score += 7;
-
-    reasons.push(
-      'Character-reference structure'
-    );
-  }
-
-
-  if (
-    profile.literaryVocabulary >= 3
-  ) {
-
-    score += 8;
-
-    reasons.push(
-      'Literary vocabulary'
-    );
-  }
-
-
-  if (
-    profile.transitions >= 5
-  ) {
-
-    score -= 7;
-  }
-
-
-  if (
-    domain === 'books'
-  ) {
-
-    score += 12;
-
-    reasons.push(
-      'Literary-domain protection'
-    );
-  }
-
-
-  if (
+    domain === 'books' ||
     domain === 'poetry'
   ) {
 
-    score += 14;
+    score += 10;
 
     reasons.push(
-      'Poetry-domain protection'
+      'Literary-domain protection'
     );
   }
 
@@ -1234,18 +1012,13 @@ function calculateHumanEvidence(
         )
       ),
 
-    reasons:
-      [
-        ...new Set(
-          reasons
-        )
-      ]
+    reasons
   };
 }
 
 
 /* ============================================================
-   TEXT CHUNKING
+   CHUNKING
 ============================================================ */
 
 function chunkText(
@@ -1256,13 +1029,14 @@ function chunkText(
   const sentences =
     value.match(
       /[^.!?]+[.!?]+|[^.!?]+$/g
-    ) || [value];
-
+    ) ||
+    [
+      value
+    ];
 
   const chunks = [];
 
   let current = '';
-
 
   for (
     const sentence
@@ -1292,7 +1066,6 @@ function chunkText(
     }
   }
 
-
   if (
     current.trim()
   ) {
@@ -1301,7 +1074,6 @@ function chunkText(
       current.trim()
     );
   }
-
 
   return chunks
     .filter(Boolean)
@@ -1313,26 +1085,26 @@ function chunkText(
 
 
 /* ============================================================
-   MODEL LOADERS
+   MODEL LOADING
 ============================================================ */
 
 async function loadTMR() {
 
-  if (tmrModel) {
+  if (
+    tmrModel
+  ) {
+
     return tmrModel;
   }
-
 
   setState(
     'Loading TMR…'
   );
 
-
   setProgress(
     8,
-    'Loading Model A…'
+    'Loading detector A…'
   );
-
 
   tmrModel =
     await pipeline(
@@ -1344,28 +1116,27 @@ async function loadTMR() {
       }
     );
 
-
   return tmrModel;
 }
 
 
 async function loadE5() {
 
-  if (e5Model) {
+  if (
+    e5Model
+  ) {
+
     return e5Model;
   }
-
 
   setState(
     'Loading E5-small…'
   );
 
-
   setProgress(
     18,
-    'Loading Model B…'
+    'Loading detector B…'
   );
-
 
   e5Model =
     await pipeline(
@@ -1377,28 +1148,27 @@ async function loadE5() {
       }
     );
 
-
   return e5Model;
 }
 
 
 async function loadModern() {
 
-  if (modernModel) {
+  if (
+    modernModel
+  ) {
+
     return modernModel;
   }
 
-
   setState(
-    'Loading ModernBERT judge…'
+    'Loading ModernBERT…'
   );
-
 
   setProgress(
-    72,
-    'Loading Model C…'
+    70,
+    'Loading detector C…'
   );
-
 
   modernModel =
     await pipeline(
@@ -1409,7 +1179,6 @@ async function loadModern() {
           'q4f16'
       }
     );
-
 
   return modernModel;
 }
@@ -1429,13 +1198,13 @@ function aiProbability(
         output
       )
         ? output
-        : [output]
+        : [
+            output
+          ]
     ).flat();
-
 
   let ai = null;
   let human = null;
-
 
   for (
     const item
@@ -1444,17 +1213,15 @@ function aiProbability(
 
     const label =
       String(
-        item?.label || ''
+        item?.label ||
+        ''
       )
-        .toLowerCase()
-        .trim();
-
+        .toLowerCase();
 
     const score =
       Number(
         item?.score
       );
-
 
     if (
       !Number.isFinite(
@@ -1465,12 +1232,18 @@ function aiProbability(
       continue;
     }
 
-
     if (
-      label.includes('ai') ||
-      label.includes('machine') ||
-      label.includes('generated') ||
-      label === 'label_1'
+      label.includes(
+        'ai'
+      ) ||
+      label.includes(
+        'machine'
+      ) ||
+      label.includes(
+        'generated'
+      ) ||
+      label ===
+        'label_1'
     ) {
 
       ai =
@@ -1480,10 +1253,12 @@ function aiProbability(
         );
     }
 
-
     if (
-      label.includes('human') ||
-      label === 'label_0'
+      label.includes(
+        'human'
+      ) ||
+      label ===
+        'label_0'
     ) {
 
       human =
@@ -1494,55 +1269,35 @@ function aiProbability(
     }
   }
 
-
   if (
     ai !== null
   ) {
 
-    return clamp(
-      ai,
-      0,
-      1
-    );
+    return ai;
   }
-
 
   if (
     human !== null
   ) {
 
-    return clamp(
-      1 - human,
-      0,
-      1
+    return (
+      1 -
+      human
     );
   }
 
-
   if (
-    results.length >= 2
+    results.length >=
+    2
   ) {
 
-    const second =
-      Number(
-        results[1]?.score
-      );
-
-
-    if (
-      Number.isFinite(
-        second
-      )
-    ) {
-
-      return clamp(
-        second,
-        0,
+    return Number(
+      results[
         1
-      );
-    }
+      ]?.score ??
+      0.5
+    );
   }
-
 
   return 0.5;
 }
@@ -1553,7 +1308,7 @@ async function classify(
   value
 ) {
 
-  const result =
+  const output =
     await model(
       value,
       {
@@ -1565,10 +1320,9 @@ async function classify(
       }
     );
 
-
   return Math.round(
     aiProbability(
-      result
+      output
     ) *
     100
   );
@@ -1576,162 +1330,15 @@ async function classify(
 
 
 /* ============================================================
-   BENCHMARK RECORD NORMALIZATION
-============================================================ */
-
-function normalizeBenchmarkRecord(
-  record
-) {
-
-  if (!record) {
-    return null;
-  }
-
-
-  const truth =
-    String(
-      record.truth ||
-      record.groundTruth ||
-      ''
-    )
-      .trim()
-      .toUpperCase();
-
-
-  const scores =
-    record.scores || {
-
-      tmr:
-        Number(
-          record.models?.tmr ??
-          record.tmr
-        ),
-
-      e5:
-        Number(
-          record.models?.e5 ??
-          record.e5
-        ),
-
-      modern:
-        Number(
-          record.models?.modern ??
-          record.modern
-        )
-    };
-
-
-  return {
-
-    ...record,
-
-    truth,
-
-    version:
-      record.version ||
-      record.appVersion ||
-      'legacy',
-
-    domain:
-      record.domain ||
-      'general',
-
-    scores,
-
-    consensus:
-      record.consensus || {
-
-        calibrated:
-          record.calibratedScore ??
-          record.score ??
-          record.rawSignal ??
-          50,
-
-        quality:
-          record.evidenceQuality ??
-          record.confidence ??
-          50,
-
-        verdict:
-          record.verdict ||
-          'INCONCLUSIVE'
-      }
-  };
-}
-
-
-/* ============================================================
-   BENCHMARK LOAD + MIGRATION
+   BENCHMARK STORAGE
 ============================================================ */
 
 function loadBench() {
 
-  const current =
-    loadJSON(
-      BENCH_KEY,
-      []
-    );
-
-
-  if (
-    Array.isArray(
-      current
-    ) &&
-    current.length
-  ) {
-
-    return current
-      .map(
-        normalizeBenchmarkRecord
-      )
-      .filter(Boolean);
-  }
-
-
-  for (
-    const legacyKey
-    of LEGACY_BENCH_KEYS
-  ) {
-
-    const legacy =
-      loadJSON(
-        legacyKey,
-        []
-      );
-
-
-    if (
-      Array.isArray(
-        legacy
-      ) &&
-      legacy.length
-    ) {
-
-      const normalized =
-        legacy
-          .map(
-            normalizeBenchmarkRecord
-          )
-          .filter(Boolean);
-
-
-      saveJSON(
-        BENCH_KEY,
-        normalized
-      );
-
-
-      console.info(
-        `AI Trace V6.2 migrated benchmark from ${legacyKey}`
-      );
-
-
-      return normalized;
-    }
-  }
-
-
-  return [];
+  return loadJSON(
+    BENCH_KEY,
+    []
+  );
 }
 
 
@@ -1746,8 +1353,23 @@ function saveBench(
 }
 
 
+function binaryRecords(
+  records =
+    loadBench()
+) {
+
+  return records.filter(
+    record =>
+      record.truth ===
+        'AI' ||
+      record.truth ===
+        'HUMAN'
+  );
+}
+
+
 /* ============================================================
-   BENCHMARK PREDICTION
+   PREDICTIONS
 ============================================================ */
 
 function benchmarkPrediction(
@@ -1755,11 +1377,9 @@ function benchmarkPrediction(
 ) {
 
   const verdict =
-    record?.consensus
+    record.consensus
       ?.verdict ||
-    record?.verdict ||
     '';
-
 
   if (
     verdict ===
@@ -1771,7 +1391,6 @@ function benchmarkPrediction(
     return 'AI';
   }
 
-
   if (
     verdict ===
       'Strong human evidence' ||
@@ -1782,72 +1401,17 @@ function benchmarkPrediction(
     return 'HUMAN';
   }
 
-
   return 'ABSTAIN';
 }
 
 
 /* ============================================================
-   DETECTOR RAW PREDICTION
-============================================================ */
-
-function detectorPrediction(
-  score
-) {
-
-  if (
-    !Number.isFinite(
-      score
-    )
-  ) {
-
-    return 'ABSTAIN';
-  }
-
-
-  if (
-    score >= 70
-  ) {
-
-    return 'AI';
-  }
-
-
-  if (
-    score <= 30
-  ) {
-
-    return 'HUMAN';
-  }
-
-
-  return 'ABSTAIN';
-}
-
-
-/* ============================================================
-   BINARY BENCHMARK RECORDS
-============================================================ */
-
-function binaryRecords(
-  records = loadBench()
-) {
-
-  return records.filter(
-    record =>
-      record.truth === 'AI' ||
-      record.truth === 'HUMAN'
-  );
-}
-
-
-/* ============================================================
-   GENERIC CONFUSION METRICS
+   GENERAL METRIC EVALUATOR
 ============================================================ */
 
 function evaluatePredictions(
   rows,
-  getPrediction
+  predictionFunction
 ) {
 
   let TP = 0;
@@ -1858,30 +1422,32 @@ function evaluatePredictions(
   let aiAbstain = 0;
   let humanAbstain = 0;
 
-
   for (
-    const record
+    const row
     of rows
   ) {
 
-    const predicted =
-      getPrediction(
-        record
+    const prediction =
+      predictionFunction(
+        row
       );
 
-
     if (
-      predicted ===
+      prediction ===
       'ABSTAIN'
     ) {
 
       if (
-        record.truth === 'AI'
+        row.truth ===
+        'AI'
       ) {
 
         aiAbstain++;
 
-      } else {
+      } else if (
+        row.truth ===
+        'HUMAN'
+      ) {
 
         humanAbstain++;
       }
@@ -1889,69 +1455,66 @@ function evaluatePredictions(
       continue;
     }
 
-
     if (
-      record.truth === 'AI' &&
-      predicted === 'AI'
+      row.truth ===
+        'AI' &&
+      prediction ===
+        'AI'
     ) {
 
       TP++;
     }
 
-
     if (
-      record.truth === 'HUMAN' &&
-      predicted === 'HUMAN'
+      row.truth ===
+        'HUMAN' &&
+      prediction ===
+        'HUMAN'
     ) {
 
       TN++;
     }
 
-
     if (
-      record.truth === 'HUMAN' &&
-      predicted === 'AI'
+      row.truth ===
+        'HUMAN' &&
+      prediction ===
+        'AI'
     ) {
 
       FP++;
     }
 
-
     if (
-      record.truth === 'AI' &&
-      predicted === 'HUMAN'
+      row.truth ===
+        'AI' &&
+      prediction ===
+        'HUMAN'
     ) {
 
       FN++;
     }
   }
 
-
   const totalAI =
     rows.filter(
-      record =>
-        record.truth === 'AI'
+      row =>
+        row.truth ===
+        'AI'
     ).length;
-
 
   const totalHuman =
     rows.filter(
-      record =>
-        record.truth === 'HUMAN'
+      row =>
+        row.truth ===
+        'HUMAN'
     ).length;
-
 
   const decided =
     TP +
     TN +
     FP +
     FN;
-
-
-  const abstained =
-    aiAbstain +
-    humanAbstain;
-
 
   return {
 
@@ -1962,69 +1525,70 @@ function evaluatePredictions(
 
     totalHuman,
 
+    decided,
+
+    abstentions:
+      aiAbstain +
+      humanAbstain,
+
     TP,
     TN,
     FP,
     FN,
 
-    decided,
-
-    abstained,
-
     aiAbstain,
-
     humanAbstain,
 
     coverage:
-      percentage(
+      safePercent(
         decided,
         rows.length
       ),
 
     selectiveAccuracy:
-      percentage(
+      safePercent(
         TP + TN,
         decided
       ),
 
     precision:
-      percentage(
+      safePercent(
         TP,
         TP + FP
       ),
 
     recall:
-      percentage(
+      safePercent(
         TP,
         totalAI
       ),
 
     specificity:
-      percentage(
+      safePercent(
         TN,
         totalHuman
       ),
 
     fpr:
-      percentage(
+      safePercent(
         FP,
         totalHuman
       ),
 
     fnr:
-      percentage(
+      safePercent(
         FN,
         totalAI
       ),
 
     aiAbstainRate:
-      percentage(
+      safePercent(
         aiAbstain,
         totalAI
       ),
 
     humanAbstainRate:
-      percentage(
+      safePercent(
         humanAbstain,
         totalHuman
       )
@@ -2033,221 +1597,171 @@ function evaluatePredictions(
 
 
 /* ============================================================
-   DETECTOR METRICS
+   DETECTOR-SPECIFIC PREDICTION
 ============================================================ */
 
-function detectorMetrics(
-  detectorName,
-  records = loadBench()
+function detectorPrediction(
+  record,
+  detector
 ) {
 
-  const rows =
-    binaryRecords(
-      records
+  const value =
+    record.scores?.[
+      detector
+    ];
+
+  if (
+    !Number.isFinite(
+      value
     )
-      .filter(
-        record =>
-          Number.isFinite(
-            Number(
-              record.scores?.[
-                detectorName
-              ]
-            )
-          )
-      );
+  ) {
+
+    return 'ABSTAIN';
+  }
+
+  if (
+    value >=
+    70
+  ) {
+
+    return 'AI';
+  }
+
+  if (
+    value <=
+    30
+  ) {
+
+    return 'HUMAN';
+  }
+
+  return 'ABSTAIN';
+}
 
 
-  return evaluatePredictions(
-    rows,
+/* ============================================================
+   LEAVE-ONE-OUT RECORD FILTER
+============================================================ */
 
+function leaveOneOutRecords(
+  records,
+  excludeId
+) {
+
+  if (
+    !excludeId
+  ) {
+
+    return records;
+  }
+
+  return records.filter(
     record =>
-      detectorPrediction(
-        Number(
-          record.scores?.[
-            detectorName
-          ]
-        )
-      )
+      record.id !==
+      excludeId
   );
 }
 
 
 /* ============================================================
-   GLOBAL DETECTOR RELIABILITY
+   DETECTOR RELIABILITY
 ============================================================ */
 
-function globalDetectorReliability(
-  detectorName,
-  records = loadBench()
-) {
-
-  const metrics =
-    detectorMetrics(
-      detectorName,
-      records
-    );
-
-
-  /*
-    MINIMUM SAMPLE GUARD
-
-    With tiny datasets we do NOT allow
-    benchmark measurements to dominate.
-  */
-
-  if (
-    metrics.total < 20
-  ) {
-
-    return {
-
-      ready:
-        false,
-
-      samples:
-        metrics.total,
-
-      weight:
-        1,
-
-      metrics
-    };
-  }
-
-
-  const accuracy =
-    metrics.selectiveAccuracy /
-    100;
-
-
-  const coverage =
-    metrics.coverage /
-    100;
-
-
-  const fprSafety =
-    1 -
-    metrics.fpr /
-    100;
-
-
-  const fnrSafety =
-    1 -
-    metrics.fnr /
-    100;
-
-
-  let reliability =
-    accuracy * 0.45 +
-    coverage * 0.15 +
-    fprSafety * 0.27 +
-    fnrSafety * 0.13;
-
-
-  /*
-    False positives are especially dangerous
-    for an AI-authorship detector.
-  */
-
-  if (
-    metrics.fpr >= 40
-  ) {
-
-    reliability *= 0.70;
-  }
-
-
-  if (
-    metrics.fpr >= 70
-  ) {
-
-    reliability *= 0.55;
-  }
-
-
-  reliability =
-    clamp(
-      reliability,
-      0.20,
-      1
-    );
-
-
-  return {
-
-    ready:
-      true,
-
-    samples:
-      metrics.total,
-
-    weight:
-      Number(
-        reliability.toFixed(
-          3
-        )
-      ),
-
-    metrics
-  };
-}
-
-
-/* ============================================================
-   DOMAIN-SPECIFIC DETECTOR RELIABILITY
-============================================================ */
-
-function domainDetectorReliability(
-  detectorName,
+function detectorReliabilityMetrics(
+  detector,
   domain,
-  records = loadBench()
+  records,
+  excludeId = null
 ) {
+
+  const cleanRecords =
+    leaveOneOutRecords(
+      binaryRecords(
+        records
+      ),
+      excludeId
+    );
+
+  const globalRows =
+    cleanRecords.filter(
+      record =>
+        Number.isFinite(
+          record.scores?.[
+            detector
+          ]
+        )
+    );
 
   const domainRows =
-    binaryRecords(
-      records
-    )
-      .filter(
-        record =>
-          (
-            record.domain ||
-            'general'
-          ) === domain
-      );
-
-
-  const metrics =
-    detectorMetrics(
-      detectorName,
-      domainRows
+    globalRows.filter(
+      record =>
+        (
+          record.domain ||
+          'general'
+        ) ===
+        domain
     );
 
 
+  const globalMetrics =
+    evaluatePredictions(
+      globalRows,
+      record =>
+        detectorPrediction(
+          record,
+          detector
+        )
+    );
+
+
+  const domainMetrics =
+    evaluatePredictions(
+      domainRows,
+      record =>
+        detectorPrediction(
+          record,
+          detector
+        )
+    );
+
+
+  return {
+
+    global:
+      globalMetrics,
+
+    domain:
+      domainMetrics,
+
+    globalSamples:
+      globalRows.length,
+
+    domainSamples:
+      domainRows.length
+  };
+}
+
+
+/* ============================================================
+   RELIABILITY WEIGHT
+============================================================ */
+
+function calculateReliabilityWeight(
+  metrics,
+  sampleCount
+) {
+
   /*
-    Domain reliability requires even more caution.
-    We do not activate it until there are enough
-    samples in that specific domain.
+    Small-sample protection:
+    below 20 samples reliability stays close to neutral.
   */
 
   if (
-    metrics.total < 12 ||
-    metrics.totalAI < 4 ||
-    metrics.totalHuman < 4
+    sampleCount <
+    20
   ) {
 
-    return {
-
-      ready:
-        false,
-
-      samples:
-        metrics.total,
-
-      weight:
-        1,
-
-      metrics
-    };
+    return 1;
   }
 
 
@@ -2255,82 +1769,168 @@ function domainDetectorReliability(
     metrics.selectiveAccuracy /
     100;
 
-
   const coverage =
     metrics.coverage /
     100;
 
-
-  const fprSafety =
-    1 -
+  const fpr =
     metrics.fpr /
     100;
 
-
-  const fnrSafety =
-    1 -
+  const fnr =
     metrics.fnr /
     100;
 
 
-  let reliability =
-    accuracy * 0.40 +
-    coverage * 0.12 +
-    fprSafety * 0.33 +
-    fnrSafety * 0.15;
+  let score =
+    0.50 +
+    accuracy * 0.45 +
+    coverage * 0.15 -
+    fpr * 0.40 -
+    fnr * 0.25;
 
 
-  if (
-    metrics.fpr >= 40
-  ) {
+  /*
+    Smooth confidence ramp.
+  */
 
-    reliability *= 0.65;
-  }
-
-
-  if (
-    metrics.fpr >= 70
-  ) {
-
-    reliability *= 0.50;
-  }
-
-
-  reliability =
+  const maturity =
     clamp(
-      reliability,
-      0.15,
+      sampleCount /
+      100,
+      0,
       1
     );
 
 
-  return {
+  score =
+    1 +
+    (
+      score -
+      1
+    ) *
+    maturity;
 
-    ready:
-      true,
 
-    samples:
-      metrics.total,
-
-    weight:
-      Number(
-        reliability.toFixed(
-          3
-        )
-      ),
-
-    metrics
-  };
+  return clamp(
+    score,
+    0.35,
+    1.35
+  );
 }
 
 
 /* ============================================================
-   ADAPTIVE RELIABILITY PROFILE
+   DIRECTIONAL RELIABILITY
 ============================================================ */
 
-function adaptiveReliabilityProfile(
+function directionalWeight(
+  detector,
   domain,
-  records = loadBench()
+  direction,
+  records,
+  excludeId = null
+) {
+
+  const stats =
+    detectorReliabilityMetrics(
+      detector,
+      domain,
+      records,
+      excludeId
+    );
+
+
+  /*
+    Prefer domain data only after enough domain samples.
+  */
+
+  const useDomain =
+    stats.domainSamples >=
+    20;
+
+
+  const metrics =
+    useDomain
+      ? stats.domain
+      : stats.global;
+
+
+  const samples =
+    useDomain
+      ? stats.domainSamples
+      : stats.globalSamples;
+
+
+  if (
+    samples <
+    20
+  ) {
+
+    return 1;
+  }
+
+
+  let weight =
+    calculateReliabilityWeight(
+      metrics,
+      samples
+    );
+
+
+  /*
+    Additional asymmetric protection.
+
+    AI direction:
+    high FPR reduces AI trust strongly.
+
+    HUMAN direction:
+    high FNR reduces HUMAN trust.
+  */
+
+  if (
+    direction ===
+    'AI'
+  ) {
+
+    weight *=
+      1 -
+      (
+        metrics.fpr /
+        100
+      ) *
+      0.65;
+
+  } else {
+
+    weight *=
+      1 -
+      (
+        metrics.fnr /
+        100
+      ) *
+      0.65;
+  }
+
+
+  return clamp(
+    weight,
+    0.30,
+    1.35
+  );
+}
+
+
+/* ============================================================
+   RELIABILITY OBJECT
+============================================================ */
+
+function buildModelReliability(
+  domain,
+  records =
+    loadBench(),
+  excludeId =
+    null
 ) {
 
   const detectors = [
@@ -2339,506 +1939,161 @@ function adaptiveReliabilityProfile(
     'modern'
   ];
 
-
   const result = {};
-
 
   for (
     const detector
     of detectors
   ) {
 
-    const global =
-      globalDetectorReliability(
-        detector,
-        records
-      );
-
-
-    const domainSpecific =
-      domainDetectorReliability(
+    const stats =
+      detectorReliabilityMetrics(
         detector,
         domain,
-        records
+        records,
+        excludeId
       );
 
-
-    let weight = 1;
-
-
-    if (
-      global.ready &&
-      domainSpecific.ready
-    ) {
-
-      /*
-        Domain reliability receives slightly
-        more influence than global reliability.
-      */
-
-      weight =
-        global.weight * 0.42 +
-        domainSpecific.weight * 0.58;
-
-    } else if (
-      global.ready
-    ) {
-
-      weight =
-        global.weight;
-
-    } else {
-
-      /*
-        Tiny benchmark:
-        do not pretend we have learned reliability.
-      */
-
-      weight = 1;
-    }
-
+    const base =
+      calculateReliabilityWeight(
+        stats.global,
+        stats.globalSamples
+      );
 
     result[
       detector
     ] = {
 
-      weight:
-        Number(
-          clamp(
-            weight,
-            0.15,
-            1.15
-          ).toFixed(
-            3
-          )
-        ),
-
-      global,
-
-      domain:
-        domainSpecific
-    };
-  }
-
-
-  return result;
-}
-/* ============================================================
-   AI TRACE V6.2
-   PART 2 / 3
-
-   - Directional detector reliability
-   - Adaptive model weighting
-   - Outlier defense
-   - Segment reliability
-   - Evidence sufficiency
-   - Third-model routing
-   - Adaptive consensus
-   - Calibration
-   - Abstention protection
-============================================================ */
-
-
-/* ============================================================
-   DIRECTIONAL DETECTOR RELIABILITY
-============================================================ */
-
-function directionalDetectorReliability(
-  detectorName,
-  direction,
-  domain,
-  records = loadBench()
-) {
-
-  const binary =
-    binaryRecords(
-      records
-    );
-
-
-  const globalRows =
-    binary.filter(
-      record =>
-        Number.isFinite(
-          Number(
-            record.scores?.[
-              detectorName
-            ]
-          )
-        )
-    );
-
-
-  const domainRows =
-    globalRows.filter(
-      record =>
-        (
-          record.domain ||
-          'general'
-        ) === domain
-    );
-
-
-  function calculate(rows) {
-
-    let relevant = 0;
-    let correct = 0;
-    let wrong = 0;
-
-
-    for (
-      const record
-      of rows
-    ) {
-
-      const score =
-        Number(
-          record.scores?.[
-            detectorName
-          ]
-        );
-
-
-      const prediction =
-        detectorPrediction(
-          score
-        );
-
-
-      if (
-        prediction !==
-        direction
-      ) {
-
-        continue;
-      }
-
-
-      relevant++;
-
-
-      if (
-        prediction ===
-        record.truth
-      ) {
-
-        correct++;
-
-      } else {
-
-        wrong++;
-      }
-    }
-
-
-    return {
-
-      samples:
-        relevant,
-
-      correct,
-
-      wrong,
-
-      accuracy:
-        percentage(
-          correct,
-          relevant
-        )
-    };
-  }
-
-
-  const global =
-    calculate(
-      globalRows
-    );
-
-
-  const domainSpecific =
-    calculate(
-      domainRows
-    );
-
-
-  /*
-    We require enough directional examples before
-    allowing benchmark learning to influence a model.
-
-    Example:
-    A detector should not receive a huge HUMAN weight
-    because it happened to classify two human samples
-    correctly.
-  */
-
-  const globalReady =
-    global.samples >= 10;
-
-
-  const domainReady =
-    domainSpecific.samples >= 6;
-
-
-  let reliability = 1;
-
-
-  if (
-    globalReady
-  ) {
-
-    reliability =
-      clamp(
-        global.accuracy /
-        100,
-        0.20,
-        1
-      );
-  }
-
-
-  if (
-    globalReady &&
-    domainReady
-  ) {
-
-    reliability =
-      reliability * 0.45 +
-      clamp(
-        domainSpecific.accuracy /
-        100,
-        0.15,
-        1
-      ) * 0.55;
-
-  } else if (
-    !globalReady &&
-    domainReady
-  ) {
-
-    /*
-      Domain-only learning is intentionally
-      conservative.
-    */
-
-    reliability =
-      0.65 +
-      (
-        clamp(
-          domainSpecific.accuracy /
-          100,
-          0.15,
-          1
-        ) -
-        0.65
-      ) * 0.35;
-  }
-
-
-  return {
-
-    ready:
-      globalReady ||
-      domainReady,
-
-    weight:
-      Number(
-        clamp(
-          reliability,
-          0.15,
-          1.05
-        ).toFixed(
-          3
-        )
-      ),
-
-    global,
-
-    domain:
-      domainSpecific
-  };
-}
-
-
-/* ============================================================
-   FULL MODEL RELIABILITY
-============================================================ */
-
-function buildModelReliability(
-  domain,
-  records = loadBench()
-) {
-
-  const base =
-    adaptiveReliabilityProfile(
-      domain,
-      records
-    );
-
-
-  const result = {};
-
-
-  for (
-    const detector
-    of [
-      'tmr',
-      'e5',
-      'modern'
-    ]
-  ) {
-
-    result[
-      detector
-    ] = {
-
-      base:
-        base[
-          detector
-        ]?.weight ??
-        1,
-
-      ai:
-        directionalDetectorReliability(
-          detector,
-          'AI',
-          domain,
-          records
-        ),
-
-      human:
-        directionalDetectorReliability(
-          detector,
-          'HUMAN',
-          domain,
-          records
-        ),
+      base,
 
       global:
-        base[
-          detector
-        ]?.global,
+        {
+          samples:
+            stats.globalSamples,
+
+          metrics:
+            stats.global
+        },
 
       domain:
-        base[
-          detector
-        ]?.domain
+        {
+          samples:
+            stats.domainSamples,
+
+          metrics:
+            stats.domain
+        },
+
+      ai:
+        {
+          weight:
+            directionalWeight(
+              detector,
+              domain,
+              'AI',
+              records,
+              excludeId
+            )
+        },
+
+      human:
+        {
+          weight:
+            directionalWeight(
+              detector,
+              domain,
+              'HUMAN',
+              records,
+              excludeId
+            )
+        }
     };
   }
-
 
   return result;
 }
 
 
 /* ============================================================
-   MODEL WEIGHT FOR CURRENT SCORE
+   THIRD MODEL ROUTING
 ============================================================ */
 
-function modelWeightForScore(
-  detectorName,
-  score,
-  reliability
-) {
+function shouldUseThirdModel({
+  scores,
+  human,
+  segmentScores,
+  domain,
+  words
+}) {
 
   if (
     !Number.isFinite(
-      score
+      scores.tmr
+    ) ||
+    !Number.isFinite(
+      scores.e5
     )
   ) {
 
-    return 0;
+    return false;
   }
 
+  const gap =
+    Math.abs(
+      scores.tmr -
+      scores.e5
+    );
 
-  const detector =
-    reliability?.[
-      detectorName
-    ];
+  const quickMedian =
+    median(
+      [
+        scores.tmr,
+        scores.e5
+      ]
+    );
 
+  const segmentRange =
+    segmentScores.length
+      ? Math.max(
+          ...segmentScores
+        ) -
+        Math.min(
+          ...segmentScores
+        )
+      : 0;
 
-  if (!detector) {
-    return 1;
-  }
+  return (
+    words < 180 ||
 
+    gap >= 18 ||
 
-  const base =
-    detector.base ??
-    1;
+    (
+      quickMedian >=
+        35 &&
+      quickMedian <=
+        85
+    ) ||
 
+    segmentRange >=
+      40 ||
 
-  let directional = 1;
+    human.score >=
+      35 ||
 
+    domain ===
+      'books' ||
 
-  if (
-    score >= 70
-  ) {
-
-    directional =
-      detector.ai?.weight ??
-      1;
-
-  } else if (
-    score <= 30
-  ) {
-
-    directional =
-      detector.human?.weight ??
-      1;
-
-  } else {
-
-    /*
-      Scores near the middle are uncertain.
-      Directional benchmark performance should
-      therefore have little influence.
-    */
-
-    const ai =
-      detector.ai?.weight ??
-      1;
-
-
-    const human =
-      detector.human?.weight ??
-      1;
-
-
-    directional =
-      (
-        ai +
-        human
-      ) / 2;
-  }
-
-
-  /*
-    Directional reliability receives less influence
-    than the global/domain reliability because
-    directional datasets are normally smaller.
-  */
-
-  const combined =
-    base * 0.68 +
-    directional * 0.32;
-
-
-  return Number(
-    clamp(
-      combined,
-      0.15,
-      1.15
-    ).toFixed(
-      3
-    )
+    domain ===
+      'poetry'
   );
 }
 
 
 /* ============================================================
-   OUTLIER ANALYSIS
+   OUTLIER DETECTION
 ============================================================ */
 
-function analyzeModelOutliers(
+function detectModelOutlier(
   scores
 ) {
 
@@ -2858,7 +2113,6 @@ function analyzeModelOutliers(
           )
       );
 
-
   if (
     entries.length <
     3
@@ -2873,85 +2127,69 @@ function analyzeModelOutliers(
         null,
 
       distance:
-        0,
-
-      reference:
-        median(
-          entries.map(
-            entry =>
-              entry[1]
-          )
-        )
+        0
     };
   }
 
-
   const values =
     entries.map(
-      entry =>
-        entry[1]
+      (
+        [
+          ,
+          value
+        ]
+      ) =>
+        value
     );
 
-
-  const reference =
+  const med =
     median(
       values
     );
-
 
   const distances =
     entries.map(
       (
         [
-          name,
-          value
+          detector,
+          score
         ]
       ) => ({
 
-        name,
+        detector,
 
-        value,
+        score,
 
         distance:
           Math.abs(
-            value -
-            reference
+            score -
+            med
           )
       })
-    );
+    )
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          b.distance -
+          a.distance
+      );
 
-
-  distances.sort(
-    (
-      a,
-      b
-    ) =>
-      b.distance -
-      a.distance
-  );
-
-
-  const largest =
+  const first =
     distances[0];
-
 
   const second =
     distances[1];
 
-
-  /*
-    We only call something an outlier when:
-
-    1. It is far away from consensus.
-    2. It is substantially farther than the
-       next-most-distant detector.
-  */
-
   const detected =
-    largest.distance >= 30 &&
-    largest.distance -
-      second.distance >= 15;
-
+    first.distance >=
+      28 &&
+    (
+      first.distance -
+      second.distance
+    ) >=
+      12;
 
   return {
 
@@ -2959,174 +2197,13 @@ function analyzeModelOutliers(
 
     detector:
       detected
-        ? largest.name
+        ? first.detector
         : null,
 
     distance:
       Math.round(
-        largest.distance
-      ),
-
-    reference:
-      Math.round(
-        reference
+        first.distance
       )
-  };
-}
-
-
-/* ============================================================
-   ADAPTIVE WEIGHTED MODEL SIGNAL
-============================================================ */
-
-function adaptiveModelSignal(
-  scores,
-  reliability
-) {
-
-  const outlier =
-    analyzeModelOutliers(
-      scores
-    );
-
-
-  const values = [];
-  const weights = [];
-  const details = {};
-
-
-  for (
-    const detector
-    of [
-      'tmr',
-      'e5',
-      'modern'
-    ]
-  ) {
-
-    const score =
-      scores[
-        detector
-      ];
-
-
-    if (
-      !Number.isFinite(
-        score
-      )
-    ) {
-
-      continue;
-    }
-
-
-    let weight =
-      modelWeightForScore(
-        detector,
-        score,
-        reliability
-      );
-
-
-    /*
-      A detector identified as a strong isolated
-      outlier is not deleted. Its influence is
-      reduced instead.
-    */
-
-    if (
-      outlier.detected &&
-      outlier.detector ===
-        detector
-    ) {
-
-      weight *= 0.38;
-    }
-
-
-    /*
-      Extreme predictions receive a small bonus
-      only when they agree with the broader ensemble.
-    */
-
-    const ensembleReference =
-      outlier.reference;
-
-
-    const agrees =
-      Math.abs(
-        score -
-        ensembleReference
-      ) <= 18;
-
-
-    if (
-      agrees &&
-      (
-        score >= 90 ||
-        score <= 10
-      )
-    ) {
-
-      weight *= 1.05;
-    }
-
-
-    weight =
-      clamp(
-        weight,
-        0.10,
-        1.20
-      );
-
-
-    values.push(
-      score
-    );
-
-
-    weights.push(
-      weight
-    );
-
-
-    details[
-      detector
-    ] = {
-
-      score,
-
-      weight:
-        Number(
-          weight.toFixed(
-            3
-          )
-        ),
-
-      outlier:
-        outlier.detected &&
-        outlier.detector ===
-          detector
-    };
-  }
-
-
-  const signal =
-    Math.round(
-      weightedAverage(
-        values,
-        weights
-      )
-    );
-
-
-  return {
-
-    signal,
-
-    details,
-
-    outlier
   };
 }
 
@@ -3139,37 +2216,27 @@ function analyzeSegments(
   segmentScores
 ) {
 
-  const usable =
+  const valid =
     segmentScores.filter(
       Number.isFinite
     );
 
-
   if (
-    !usable.length
+    !valid.length
   ) {
 
     return {
 
-      count:
-        0,
-
       mean:
         50,
 
-      median:
-        50,
-
-      min:
-        50,
-
-      max:
+      deviation:
         50,
 
       range:
-        0,
+        100,
 
-      deviation:
+      stability:
         0,
 
       aiSegments:
@@ -3182,134 +2249,61 @@ function analyzeSegments(
         0,
 
       mixed:
-        false,
-
-      stability:
-        0
+        true
     };
   }
 
-
-  const minimum =
-    Math.min(
-      ...usable
+  const mean =
+    average(
+      valid
     );
-
-
-  const maximum =
-    Math.max(
-      ...usable
-    );
-
-
-  const range =
-    maximum -
-    minimum;
-
 
   const deviation =
     standardDeviation(
-      usable
+      valid
     );
 
+  const range =
+    Math.max(
+      ...valid
+    ) -
+    Math.min(
+      ...valid
+    );
 
   const aiSegments =
-    usable.filter(
+    valid.filter(
       score =>
-        score >= 70
+        score >=
+        70
     ).length;
-
 
   const humanSegments =
-    usable.filter(
+    valid.filter(
       score =>
-        score <= 30
+        score <=
+        30
     ).length;
 
-
   const uncertainSegments =
-    usable.length -
+    valid.length -
     aiSegments -
     humanSegments;
 
-
-  const mixed =
-    aiSegments > 0 &&
-    humanSegments > 0;
-
-
-  /*
-    Segment stability:
-    100 = very consistent document
-    0   = extremely unstable document
-  */
-
-  let stability =
-    100;
-
-
-  stability -=
-    Math.min(
-      45,
-      deviation * 1.35
-    );
-
-
-  stability -=
-    Math.min(
-      35,
-      range * 0.35
-    );
-
-
-  if (
-    mixed
-  ) {
-
-    stability -= 12;
-  }
-
-
-  stability =
+  const stability =
     clamp(
       Math.round(
-        stability
+        100 -
+        deviation * 1.25 -
+        range * 0.35
       )
     );
 
-
   return {
-
-    count:
-      usable.length,
 
     mean:
       Math.round(
-        average(
-          usable
-        )
-      ),
-
-    median:
-      Math.round(
-        median(
-          usable
-        )
-      ),
-
-    min:
-      Math.round(
-        minimum
-      ),
-
-    max:
-      Math.round(
-        maximum
-      ),
-
-    range:
-      Math.round(
-        range
+        mean
       ),
 
     deviation:
@@ -3317,365 +2311,122 @@ function analyzeSegments(
         deviation
       ),
 
+    range:
+      Math.round(
+        range
+      ),
+
+    stability,
+
     aiSegments,
 
     humanSegments,
 
     uncertainSegments,
 
-    mixed,
-
-    stability
+    mixed:
+      aiSegments >
+        0 &&
+      humanSegments >
+        0
   };
 }
 
 
 /* ============================================================
-   EVIDENCE SUFFICIENCY
+   CALIBRATION READINESS
 ============================================================ */
 
-function calculateEvidenceSufficiency({
-  words,
-  language,
-  domain,
-  domainConfidence,
-  activeModels,
-  modelSpread,
-  segmentAnalysis,
-  humanScore,
-  thirdUsed
-}) {
+function benchmarkReadiness(
+  records =
+    loadBench()
+) {
 
-  let score = 100;
-
-  const penalties = [];
-
-
-  /*
-    DOCUMENT LENGTH
-  */
-
-  if (
-    words < 100
-  ) {
-
-    score -= 32;
-
-    penalties.push(
-      'Very short document'
+  const rows =
+    binaryRecords(
+      records
     );
 
-  } else if (
-    words < 150
-  ) {
+  const ai =
+    rows.filter(
+      record =>
+        record.truth ===
+        'AI'
+    ).length;
 
-    score -= 20;
+  const human =
+    rows.filter(
+      record =>
+        record.truth ===
+        'HUMAN'
+    ).length;
 
-    penalties.push(
-      'Short document'
-    );
-
-  } else if (
-    words < 250
-  ) {
-
-    score -= 8;
-  }
-
-
-  /*
-    LANGUAGE SUPPORT
-  */
-
-  if (
-    language !==
-    'English'
-  ) {
-
-    score -= 38;
-
-    penalties.push(
-      'Language outside strongest supported path'
-    );
-  }
-
-
-  /*
-    MODEL AVAILABILITY
-  */
-
-  if (
-    activeModels <= 1
-  ) {
-
-    score -= 38;
-
-    penalties.push(
-      'Insufficient model redundancy'
-    );
-
-  } else if (
-    activeModels === 2
-  ) {
-
-    score -= 8;
-  }
-
-
-  /*
-    MODEL DISAGREEMENT
-  */
-
-  if (
-    modelSpread >= 45
-  ) {
-
-    score -= 30;
-
-    penalties.push(
-      'Severe model disagreement'
-    );
-
-  } else if (
-    modelSpread >= 30
-  ) {
-
-    score -= 18;
-
-    penalties.push(
-      'High model disagreement'
-    );
-
-  } else if (
-    modelSpread >= 20
-  ) {
-
-    score -= 8;
-  }
-
-
-  /*
-    SEGMENT INSTABILITY
-  */
-
-  if (
-    segmentAnalysis.range >= 70
-  ) {
-
-    score -= 24;
-
-    penalties.push(
-      'Severe segment variation'
-    );
-
-  } else if (
-    segmentAnalysis.range >= 50
-  ) {
-
-    score -= 14;
-
-    penalties.push(
-      'High segment variation'
-    );
-  }
-
-
-  if (
-    segmentAnalysis.deviation >= 30
-  ) {
-
-    score -= 16;
-
-  } else if (
-    segmentAnalysis.deviation >= 20
-  ) {
-
-    score -= 8;
-  }
-
-
-  if (
-    segmentAnalysis.mixed
-  ) {
-
-    score -= 12;
-
-    penalties.push(
-      'Mixed AI/Human segment pattern'
-    );
-  }
-
-
-  /*
-    DOMAIN RISK
-  */
-
-  if (
-    domain === 'books' ||
-    domain === 'poetry'
-  ) {
-
-    score -= 16;
-
-    penalties.push(
-      'High-risk literary domain'
-    );
-
-  } else if (
-    domainConfidence === 'low'
-  ) {
-
-    score -= 5;
-  }
-
-
-  /*
-    CONFLICT BETWEEN HUMAN STYLE AND AI SIGNAL
-  */
-
-  if (
-    humanScore >= 60
-  ) {
-
-    score -= 8;
-  }
-
-
-  /*
-    Third model can improve sufficiency when it
-    was specifically triggered to resolve ambiguity.
-  */
-
-  if (
-    thirdUsed &&
-    activeModels >= 3
-  ) {
-
-    score += 6;
-  }
-
-
-  score =
-    clamp(
-      Math.round(
-        score
+  const domains =
+    new Set(
+      rows.map(
+        record =>
+          record.domain ||
+          'general'
       )
-    );
+    ).size;
 
+  let level =
+    'COLLECTING';
+
+
+  if (
+    rows.length >= 250 &&
+    ai >= 100 &&
+    human >= 100 &&
+    domains >= 5
+  ) {
+
+    level =
+      'STRONG';
+
+  } else if (
+    rows.length >= 120 &&
+    ai >= 50 &&
+    human >= 50 &&
+    domains >= 4
+  ) {
+
+    level =
+      'GOOD';
+
+  } else if (
+    rows.length >= 50 &&
+    ai >= 20 &&
+    human >= 20 &&
+    domains >= 3
+  ) {
+
+    level =
+      'EARLY';
+
+  } else if (
+    rows.length >= 20 &&
+    ai >= 8 &&
+    human >= 8
+  ) {
+
+    level =
+      'EXPERIMENTAL';
+  }
 
   return {
 
-    score,
+    level,
 
-    level:
-      score >= 75
-        ? 'Strong'
-        : score >= 55
-          ? 'Moderate'
-          : score >= 35
-            ? 'Weak'
-            : 'Insufficient',
+    total:
+      rows.length,
 
-    penalties
+    ai,
+
+    human,
+
+    domains
   };
-}
-
-
-/* ============================================================
-   THIRD MODEL ROUTING
-============================================================ */
-
-function shouldUseThirdModel({
-  scores,
-  segmentScores,
-  domain,
-  humanScore,
-  words,
-  language
-}) {
-
-  if (
-    isMobileDevice()
-  ) {
-
-    return false;
-  }
-
-
-  if (
-    language !==
-    'English'
-  ) {
-
-    return true;
-  }
-
-
-  if (
-    !Number.isFinite(
-      scores.tmr
-    ) ||
-    !Number.isFinite(
-      scores.e5
-    )
-  ) {
-
-    return true;
-  }
-
-
-  const gap =
-    Math.abs(
-      scores.tmr -
-      scores.e5
-    );
-
-
-  const quickMedian =
-    median(
-      [
-        scores.tmr,
-        scores.e5
-      ]
-    );
-
-
-  const segment =
-    analyzeSegments(
-      segmentScores
-    );
-
-
-  /*
-    ModernBERT is not loaded for every scan.
-
-    It is used when the first two models leave
-    meaningful ambiguity.
-  */
-
-  return (
-
-    words < 180 ||
-
-    gap >= 18 ||
-
-    (
-      quickMedian >= 30 &&
-      quickMedian <= 80
-    ) ||
-
-    segment.range >= 45 ||
-
-    segment.deviation >= 20 ||
-
-    segment.mixed ||
-
-    humanScore >= 45 ||
-
-    domain === 'books' ||
-
-    domain === 'poetry'
-  );
 }
 
 
@@ -3687,7 +2438,7 @@ function calculateModelAgreement(
   scores
 ) {
 
-  const active =
+  const values =
     Object.values(
       scores
     )
@@ -3695,73 +2446,49 @@ function calculateModelAgreement(
         Number.isFinite
       );
 
-
   if (
-    active.length <= 1
+    values.length <=
+    1
   ) {
 
     return {
 
-      active:
-        active.length,
+      agreement:
+        0,
 
       spread:
         100,
 
       deviation:
-        50,
-
-      agreement:
-        0
+        50
     };
   }
 
-
   const spread =
     Math.max(
-      ...active
+      ...values
     ) -
     Math.min(
-      ...active
+      ...values
     );
-
 
   const deviation =
     standardDeviation(
-      active
+      values
     );
 
-
-  let agreement =
-    100;
-
-
-  agreement -=
-    Math.min(
-      60,
-      spread * 1.15
-    );
-
-
-  agreement -=
-    Math.min(
-      30,
-      deviation * 0.65
-    );
-
-
-  agreement =
+  const agreement =
     clamp(
       Math.round(
-        agreement
+        100 -
+        spread * 1.10 -
+        deviation * 0.50
       )
     );
 
-
   return {
 
-    active:
-      active.length,
+    agreement,
 
     spread:
       Math.round(
@@ -3771,469 +2498,365 @@ function calculateModelAgreement(
     deviation:
       Math.round(
         deviation
-      ),
-
-    agreement
-  };
-}
-
-
-/* ============================================================
-   DOMAIN-SPECIFIC CALIBRATION
-============================================================ */
-
-function domainCalibration({
-  signal,
-  domain,
-  humanScore,
-  modelAgreement,
-  segmentAnalysis
-}) {
-
-  let calibrated =
-    signal;
-
-
-  /*
-    Literary material is one of the most dangerous
-    domains for false positives.
-
-    We do not simply declare literary text human.
-    Instead, strong AI signals require stronger
-    supporting evidence.
-  */
-
-  if (
-    domain === 'books' ||
-    domain === 'poetry'
-  ) {
-
-    if (
-      humanScore >= 55
-    ) {
-
-      calibrated -=
-        Math.min(
-          18,
-          (
-            humanScore -
-            45
-          ) * 0.35
-        );
-    }
-
-
-    if (
-      modelAgreement.spread >= 25
-    ) {
-
-      calibrated -= 7;
-    }
-
-
-    if (
-      segmentAnalysis.range >= 45
-    ) {
-
-      calibrated -= 6;
-    }
-  }
-
-
-  /*
-    Highly structured informational writing can
-    naturally resemble generated text, so extreme
-    confidence is softened slightly.
-  */
-
-  if (
-    domain === 'academic' ||
-    domain === 'encyclopedia' ||
-    domain === 'news'
-  ) {
-
-    if (
-      calibrated >= 80 &&
-      humanScore >= 35
-    ) {
-
-      calibrated -= 4;
-    }
-  }
-
-
-  return clamp(
-    Math.round(
-      calibrated
-    )
-  );
-}
-
-
-/* ============================================================
-   HUMAN COUNTER-EVIDENCE CALIBRATION
-============================================================ */
-
-function applyHumanCounterEvidence({
-  signal,
-  humanScore,
-  evidenceQuality,
-  domain
-}) {
-
-  /*
-    Human-style signals must never directly flip a
-    strong detector result.
-
-    Their influence increases when model evidence
-    itself is uncertain.
-  */
-
-  const uncertaintyFactor =
-    1 -
-    evidenceQuality /
-    100;
-
-
-  let strength =
-    0.08 +
-    uncertaintyFactor * 0.32;
-
-
-  if (
-    domain === 'books' ||
-    domain === 'poetry'
-  ) {
-
-    strength += 0.08;
-  }
-
-
-  const penalty =
-    humanScore *
-    strength *
-    (
-      signal /
-      100
-    );
-
-
-  return {
-
-    penalty:
-      Math.round(
-        penalty
-      ),
-
-    score:
-      clamp(
-        Math.round(
-          signal -
-          penalty
-        )
       )
   };
 }
 
 
 /* ============================================================
-   EXTREME SCORE PROTECTION
+   EVIDENCE SUFFICIENCY
 ============================================================ */
 
-function protectExtremeScore({
-  score,
-  modelAgreement,
-  segmentAnalysis,
-  sufficiency,
-  humanScore
-}) {
-
-  let result =
-    score;
-
-
-  /*
-    A score above 95 should only survive when the
-    evidence is exceptionally consistent.
-  */
-
-  if (
-    result >= 95
-  ) {
-
-    if (
-      modelAgreement.spread > 15 ||
-      segmentAnalysis.range > 35 ||
-      sufficiency.score < 80 ||
-      humanScore >= 45
-    ) {
-
-      result =
-        Math.min(
-          result,
-          94
-        );
-    }
-  }
-
-
-  /*
-    Same principle on the human side.
-  */
-
-  if (
-    result <= 5
-  ) {
-
-    if (
-      modelAgreement.spread > 15 ||
-      segmentAnalysis.range > 35 ||
-      sufficiency.score < 75
-    ) {
-
-      result =
-        Math.max(
-          result,
-          6
-        );
-    }
-  }
-
-
-  return clamp(
-    Math.round(
-      result
-    )
-  );
-}
-
-
-/* ============================================================
-   VERDICT ENGINE
-============================================================ */
-
-function determineVerdict({
-  score,
-  sufficiency,
-  modelAgreement,
-  segmentAnalysis,
-  humanScore,
+function calculateEvidenceSufficiency({
+  profile,
   language,
+  activeModels,
+  agreement,
+  segmentAnalysis,
+  outlier,
+  human,
   domain
 }) {
 
-  /*
-    LANGUAGE ABSTENTION
-  */
+  let score = 100;
+
+
+  if (
+    profile.words <
+    100
+  ) {
+
+    score -= 30;
+
+  } else if (
+    profile.words <
+    150
+  ) {
+
+    score -= 18;
+
+  } else if (
+    profile.words <
+    220
+  ) {
+
+    score -= 8;
+  }
+
 
   if (
     language !==
     'English'
   ) {
 
-    return 'INCONCLUSIVE';
+    score -= 35;
   }
 
 
-  /*
-    INSUFFICIENT EVIDENCE
-  */
-
   if (
-    sufficiency.score < 40
+    activeModels ===
+    1
   ) {
 
-    return 'INCONCLUSIVE';
-  }
-
-
-  /*
-    SEVERE CONFLICT
-  */
-
-  if (
-    modelAgreement.spread >= 42 ||
-    segmentAnalysis.range >= 75
-  ) {
-
-    return 'INCONCLUSIVE';
-  }
-
-
-  /*
-    MIXED DOCUMENT
-  */
-
-  if (
-    segmentAnalysis.mixed &&
-    segmentAnalysis.range >= 55
-  ) {
-
-    return 'INCONCLUSIVE';
-  }
-
-
-  /*
-    STRONG AI
-  */
-
-  if (
-    score >= 88 &&
-    sufficiency.score >= 76 &&
-    modelAgreement.spread <= 20 &&
-    segmentAnalysis.range <= 45 &&
-    humanScore < 48
-  ) {
-
-    return 'Strong AI evidence';
-  }
-
-
-  /*
-    LIKELY AI
-  */
-
-  if (
-    score >= 72 &&
-    sufficiency.score >= 58 &&
-    modelAgreement.spread <= 30 &&
-    segmentAnalysis.range <= 60 &&
-    humanScore < 58
-  ) {
-
-    /*
-      Literary domains receive additional protection.
-    */
-
-    if (
-      (
-        domain === 'books' ||
-        domain === 'poetry'
-      ) &&
-      (
-        humanScore >= 45 ||
-        sufficiency.score < 70
-      )
-    ) {
-
-      return 'INCONCLUSIVE';
-    }
-
-
-    return 'Likely AI';
-  }
-
-
-  /*
-    STRONG HUMAN
-  */
-
-  if (
-    score <= 18 &&
-    sufficiency.score >= 60 &&
-    modelAgreement.spread <= 28 &&
-    humanScore >= 45
-  ) {
-
-    return 'Strong human evidence';
-  }
-
-
-  /*
-    LIKELY HUMAN
-  */
-
-  if (
-    score <= 35 &&
-    sufficiency.score >= 48 &&
-    modelAgreement.spread <= 32 &&
-    humanScore >= 35
-  ) {
-
-    return 'Likely human';
-  }
-
-
-  return 'INCONCLUSIVE';
-}
-
-
-/* ============================================================
-   CONFIDENCE ENGINE
-============================================================ */
-
-function calculateConfidence({
-  sufficiency,
-  modelAgreement,
-  segmentAnalysis,
-  verdict,
-  activeModels
-}) {
-
-  let confidence =
-    sufficiency.score * 0.45 +
-    modelAgreement.agreement * 0.35 +
-    segmentAnalysis.stability * 0.20;
-
-
-  if (
-    activeModels <= 1
-  ) {
-
-    confidence -= 25;
+    score -= 35;
 
   } else if (
-    activeModels === 2
+    activeModels ===
+    2
   ) {
 
-    confidence -= 4;
+    score -= 10;
+  }
+
+
+  score -=
+    Math.round(
+      (
+        100 -
+        agreement.agreement
+      ) *
+      0.35
+    );
+
+
+  score -=
+    Math.round(
+      (
+        100 -
+        segmentAnalysis.stability
+      ) *
+      0.20
+    );
+
+
+  if (
+    outlier.detected
+  ) {
+
+    score -= 5;
   }
 
 
   if (
-    verdict ===
-    'INCONCLUSIVE'
+    domain ===
+      'books' ||
+    domain ===
+      'poetry'
   ) {
 
-    /*
-      INCONCLUSIVE is a valid result.
-
-      But the UI confidence here describes confidence
-      in an AI/Human attribution, not confidence that
-      abstention was the right decision.
-    */
-
-    confidence =
-      Math.min(
-        confidence,
-        55
-      );
+    score -= 10;
   }
 
 
-  return clamp(
-    Math.round(
-      confidence
-    )
-  );
+  if (
+    human.score >=
+    55
+  ) {
+
+    score -= 5;
+  }
+
+
+  score =
+    clamp(
+      Math.round(
+        score
+      )
+    );
+
+
+  let level =
+    'INSUFFICIENT';
+
+
+  if (
+    score >=
+    75
+  ) {
+
+    level =
+      'STRONG';
+
+  } else if (
+    score >=
+    55
+  ) {
+
+    level =
+      'MODERATE';
+
+  } else if (
+    score >=
+    40
+  ) {
+
+    level =
+      'WEAK';
+  }
+
+
+  return {
+
+    score,
+
+    level
+  };
 }
 
 
 /* ============================================================
-   MAIN V6.2 CONSENSUS ENGINE
+   ADAPTIVE CONSENSUS
 ============================================================ */
 
 function buildConsensus({
   scores,
-  segmentScores,
   profile,
+  segmentScores,
   language,
   domain,
-  domainConfidence,
   human,
   thirdUsed,
-  reliability
+  benchmarkRecords,
+  excludeBenchmarkId = null
 }) {
+
+  const activeEntries =
+    Object.entries(
+      scores
+    )
+      .filter(
+        (
+          [
+            ,
+            score
+          ]
+        ) =>
+          Number.isFinite(
+            score
+          )
+      );
+
+
+  const activeScores =
+    activeEntries.map(
+      (
+        [
+          ,
+          score
+        ]
+      ) =>
+        score
+    );
+
+
+  const activeModels =
+    activeScores.length;
+
+
+  const reliability =
+    buildModelReliability(
+      domain,
+      benchmarkRecords,
+      excludeBenchmarkId
+    );
+
+
+  const outlier =
+    detectModelOutlier(
+      scores
+    );
+
+
+  const modelWeights = {};
+
+  let weightedTotal = 0;
+  let weightTotal = 0;
+
+
+  for (
+    const [
+      detector,
+      score
+    ]
+    of activeEntries
+  ) {
+
+    const direction =
+      score >=
+        50
+        ? 'ai'
+        : 'human';
+
+
+    let weight =
+      reliability[
+        detector
+      ]?.[
+        direction
+      ]?.weight ??
+      1;
+
+
+    /*
+      Soft outlier penalty.
+    */
+
+    if (
+      outlier.detected &&
+      outlier.detector ===
+      detector
+    ) {
+
+      weight *= 0.45;
+    }
+
+
+    /*
+      Do not allow a tiny benchmark to create extreme weights.
+    */
+
+    const readiness =
+      benchmarkReadiness(
+        benchmarkRecords
+      );
+
+
+    if (
+      readiness.level ===
+      'COLLECTING'
+    ) {
+
+      weight =
+        Math.max(
+          0.85,
+          Math.min(
+            1.10,
+            weight
+          )
+        );
+    }
+
+
+    weight =
+      clamp(
+        weight,
+        0.25,
+        1.40
+      );
+
+
+    modelWeights[
+      detector
+    ] = {
+
+      score,
+
+      weight:
+        Number(
+          weight.toFixed(
+            3
+          )
+        )
+    };
+
+
+    weightedTotal +=
+      score *
+      weight;
+
+
+    weightTotal +=
+      weight;
+  }
+
+
+  const weightedRaw =
+    weightTotal
+      ? weightedTotal /
+        weightTotal
+      : 50;
+
+
+  const rawMedian =
+    median(
+      activeScores
+    );
+
+
+  /*
+    Blend weighted signal with robust median.
+  */
+
+  const raw =
+    clamp(
+      Math.round(
+        weightedRaw *
+        0.62 +
+        rawMedian *
+        0.38
+      )
+    );
+
 
   const modelAgreement =
     calculateModelAgreement(
@@ -4247,206 +2870,323 @@ function buildConsensus({
     );
 
 
-  const adaptive =
-    adaptiveModelSignal(
-      scores,
-      reliability
-    );
-
-
-  /*
-    First raw score:
-    benchmark-aware weighted detector ensemble.
-  */
-
-  const raw =
-    adaptive.signal;
-
-
-  /*
-    Evidence sufficiency is calculated before final
-    human-style calibration.
-  */
-
   const sufficiency =
     calculateEvidenceSufficiency({
 
-      words:
-        profile.words,
+      profile,
 
       language,
 
-      domain,
+      activeModels,
 
-      domainConfidence,
-
-      activeModels:
-        modelAgreement.active,
-
-      modelSpread:
-        modelAgreement.spread,
+      agreement:
+        modelAgreement,
 
       segmentAnalysis,
 
-      humanScore:
-        human.score,
+      outlier,
 
-      thirdUsed
-    });
-
-
-  /*
-    Domain calibration
-  */
-
-  const domainAdjusted =
-    domainCalibration({
-
-      signal:
-        raw,
-
-      domain,
-
-      humanScore:
-        human.score,
-
-      modelAgreement,
-
-      segmentAnalysis
-    });
-
-
-  /*
-    Human counter-evidence
-  */
-
-  const humanAdjusted =
-    applyHumanCounterEvidence({
-
-      signal:
-        domainAdjusted,
-
-      humanScore:
-        human.score,
-
-      evidenceQuality:
-        sufficiency.score,
+      human,
 
       domain
     });
 
 
   /*
-    Final extreme-score protection
+    Human counter-evidence reduces confidence in AI,
+    especially under model disagreement.
   */
 
-  const calibrated =
-    protectExtremeScore({
-
-      score:
-        humanAdjusted.score,
-
-      modelAgreement,
-
-      segmentAnalysis,
-
-      sufficiency,
-
-      humanScore:
-        human.score
-    });
+  const disagreement =
+    1 -
+    modelAgreement.agreement /
+    100;
 
 
-  /*
-    Final verdict
-  */
-
-  const verdict =
-    determineVerdict({
-
-      score:
-        calibrated,
-
-      sufficiency,
-
-      modelAgreement,
-
-      segmentAnalysis,
-
-      humanScore:
-        human.score,
-
-      language,
-
-      domain
-    });
+  const humanPenalty =
+    human.score *
+    (
+      0.08 +
+      disagreement *
+      0.35
+    ) *
+    (
+      raw /
+      100
+    );
 
 
-  /*
-    Confidence
-  */
-
-  const confidence =
-    calculateConfidence({
-
-      sufficiency,
-
-      modelAgreement,
-
-      segmentAnalysis,
-
-      verdict,
-
-      activeModels:
-        modelAgreement.active
-    });
-
-
-  const uncertainty =
+  let calibrated =
     clamp(
-      100 -
-      confidence,
+      Math.round(
+        raw -
+        humanPenalty
+      )
+    );
+
+
+  /*
+    Protected literary domains.
+  */
+
+  if (
+    (
+      domain ===
+        'books' ||
+      domain ===
+        'poetry'
+    ) &&
+    human.score >=
+      40 &&
+    modelAgreement.agreement <
+      55
+  ) {
+
+    calibrated =
+      Math.min(
+        calibrated,
+        64
+      );
+  }
+
+
+  let uncertainty =
+    clamp(
+      Math.round(
+        100 -
+        sufficiency.score
+      ),
       5,
       95
     );
+
+
+  /*
+    Conflicting high-AI + human evidence.
+  */
+
+  if (
+    calibrated >=
+      70 &&
+    human.score >=
+      50
+  ) {
+
+    uncertainty =
+      clamp(
+        uncertainty +
+        Math.round(
+          (
+            human.score -
+            45
+          ) *
+          0.30
+        ),
+        5,
+        95
+      );
+  }
+
+
+  const confidence =
+    100 -
+    uncertainty;
+
+
+  const highConflict =
+    modelAgreement.spread >=
+      45 ||
+    modelAgreement.agreement <=
+      30;
+
+
+  const severeConflict =
+    modelAgreement.spread >=
+      70;
+
+
+  let verdict =
+    'INCONCLUSIVE';
+
+
+  /*
+    Conservative AI classification.
+  */
+
+  if (
+    language ===
+      'English' &&
+
+    activeModels >=
+      2 &&
+
+    calibrated >=
+      86 &&
+
+    sufficiency.score >=
+      74 &&
+
+    modelAgreement.agreement >=
+      48 &&
+
+    !severeConflict &&
+
+    human.score <
+      50
+  ) {
+
+    verdict =
+      'Strong AI evidence';
+
+  } else if (
+    language ===
+      'English' &&
+
+    activeModels >=
+      2 &&
+
+    calibrated >=
+      74 &&
+
+    sufficiency.score >=
+      62 &&
+
+    modelAgreement.agreement >=
+      38 &&
+
+    modelAgreement.spread <
+      55 &&
+
+    human.score <
+      55
+  ) {
+
+    verdict =
+      'Likely AI';
+
+  }
+
+
+  /*
+    HUMAN verdict requires more than simply low AI score.
+  */
+
+  if (
+    language ===
+      'English' &&
+
+    activeModels >=
+      2 &&
+
+    calibrated <=
+      18 &&
+
+    human.score >=
+      50 &&
+
+    sufficiency.score >=
+      60 &&
+
+    modelAgreement.agreement >=
+      45
+  ) {
+
+    verdict =
+      'Strong human evidence';
+
+  } else if (
+    language ===
+      'English' &&
+
+    activeModels >=
+      2 &&
+
+    calibrated <=
+      34 &&
+
+    human.score >=
+      40 &&
+
+    sufficiency.score >=
+      50 &&
+
+    modelAgreement.spread <
+      50
+  ) {
+
+    verdict =
+      'Likely human';
+  }
+
+
+  /*
+    Conflict defense.
+  */
+
+  if (
+    highConflict &&
+    (
+      verdict.includes(
+        'AI'
+      ) ||
+      verdict.includes(
+        'human'
+      )
+    )
+  ) {
+
+    verdict =
+      'INCONCLUSIVE';
+  }
+
+
+  if (
+    sufficiency.score <
+    55
+  ) {
+
+    verdict =
+      'INCONCLUSIVE';
+  }
+
+
+  if (
+    language !==
+    'English'
+  ) {
+
+    verdict =
+      'INCONCLUSIVE';
+  }
 
 
   return {
 
     raw,
 
+    weightedRaw:
+      Math.round(
+        weightedRaw
+      ),
+
+    rawMedian:
+      Math.round(
+        rawMedian
+      ),
+
     calibrated,
-
-    verdict,
-
-    confidence,
 
     uncertainty,
 
-    quality:
-      sufficiency.score,
+    confidence,
 
-    sufficiency,
+    verdict,
+
+    activeModels,
+
+    modelWeights,
 
     modelAgreement,
-
-    segmentAnalysis,
-
-    reliability,
-
-    modelWeights:
-      adaptive.details,
-
-    outlier:
-      adaptive.outlier,
-
-    humanPenalty:
-      humanAdjusted.penalty,
-
-    activeModels:
-      modelAgreement.active,
-
-    thirdUsed,
 
     modelSpread:
       modelAgreement.spread,
@@ -4454,129 +3194,27 @@ function buildConsensus({
     modelSD:
       modelAgreement.deviation,
 
+    segmentAnalysis,
+
     segmentRange:
       segmentAnalysis.range,
 
     segmentSD:
-      segmentAnalysis.deviation
-  };
-}
+      segmentAnalysis.deviation,
 
+    outlier,
 
-/* ============================================================
-   MODEL EXECUTION HELPERS
-============================================================ */
+    sufficiency,
 
-async function runModelSafely(
-  loader,
-  value,
-  name
-) {
+    reliability,
 
-  try {
-
-    const model =
-      await loader();
-
-
-    const score =
-      await classify(
-        model,
-        value
-      );
-
-
-    if (
-      !Number.isFinite(
-        score
-      )
-    ) {
-
-      throw new Error(
-        `${name} returned invalid score`
-      );
-    }
-
-
-    return score;
-
-  } catch (error) {
-
-    console.error(
-      `${name} failed:`,
-      error
-    );
-
-
-    return NaN;
-  }
-}
-
-
-/* ============================================================
-   SEGMENT MODEL EXECUTION
-============================================================ */
-
-async function analyzeChunksWithTMR(
-  model,
-  chunks
-) {
-
-  const results = [];
-
-
-  for (
-    let i = 0;
-    i < chunks.length;
-    i++
-  ) {
-
-    setProgress(
-
-      28 +
+    humanPenalty:
       Math.round(
-        (
-          i /
-          Math.max(
-            1,
-            chunks.length
-          )
-        ) * 28
+        humanPenalty
       ),
 
-      `Trace Map ${i + 1}/${chunks.length}…`
-    );
-
-
-    try {
-
-      const score =
-        await classify(
-          model,
-          chunks[i]
-        );
-
-
-      results.push(
-        score
-      );
-
-    } catch (error) {
-
-      console.warn(
-        `Segment ${i + 1} failed:`,
-        error
-      );
-
-
-      results.push(
-        NaN
-      );
-    }
-  }
-
-
-  return results;
+    thirdUsed
+  };
 }
 
 
@@ -4586,21 +3224,10 @@ async function analyzeChunksWithTMR(
 
 async function runSmartScan() {
 
-  if (
-    !textEl
-  ) {
-
-    console.error(
-      'AI Trace: textarea #text was not found.'
-    );
-
-    return;
-  }
-
-
   const value =
-    textEl.value.trim();
-
+    textEl?.value
+      ?.trim() ||
+    '';
 
   const words =
     wordCount(
@@ -4609,7 +3236,8 @@ async function runSmartScan() {
 
 
   if (
-    words < 80
+    words <
+    80
   ) {
 
     alert(
@@ -4620,37 +3248,22 @@ async function runSmartScan() {
   }
 
 
-  const scanButton =
-    $('scan');
-
-
   if (
-    scanButton
+    $('scan')
   ) {
 
-    scanButton.disabled =
+    $('scan').disabled =
       true;
   }
 
 
   try {
 
-    setState(
-      'Analyzing…'
-    );
-
-
     setProgress(
       3,
       'Profiling document…'
     );
 
-
-    /*
-      --------------------------------------------------------
-      DOCUMENT PROFILE
-      --------------------------------------------------------
-    */
 
     const language =
       detectLanguage(
@@ -4672,7 +3285,7 @@ async function runSmartScan() {
 
 
     const human =
-      calculateHumanEvidence(
+      humanEvidence(
         profile,
         domainInfo.domain
       );
@@ -4683,12 +3296,6 @@ async function runSmartScan() {
         value
       );
 
-
-    /*
-      --------------------------------------------------------
-      MODEL SCORES
-      --------------------------------------------------------
-    */
 
     const scores = {
 
@@ -4705,41 +3312,65 @@ async function runSmartScan() {
 
     let segmentScores = [];
 
-    let thirdUsed = false;
-
 
     /*
-      --------------------------------------------------------
-      MODEL A — TMR
-      --------------------------------------------------------
+      MODEL A
     */
 
     try {
 
-      const modelA =
+      const model =
         await loadTMR();
 
 
       setProgress(
-        22,
-        'Running Model A…'
+        24,
+        'Running TMR detector…'
       );
 
 
       scores.tmr =
         await classify(
-          modelA,
+          model,
           value
         );
 
 
-      segmentScores =
-        await analyzeChunksWithTMR(
-          modelA,
-          chunks
+      for (
+        let i = 0;
+        i < chunks.length;
+        i++
+      ) {
+
+        setProgress(
+          28 +
+          Math.round(
+            (
+              i /
+              Math.max(
+                1,
+                chunks.length
+              )
+            ) *
+            24
+          ),
+          `Trace Map ${i + 1}/${chunks.length}`
         );
 
-    } catch (error) {
+
+        segmentScores.push(
+          await classify(
+            model,
+            chunks[
+              i
+            ]
+          )
+        );
+      }
+
+    } catch (
+      error
+    ) {
 
       console.error(
         'TMR failed:',
@@ -4749,90 +3380,108 @@ async function runSmartScan() {
 
 
     /*
-      --------------------------------------------------------
-      MODEL B — E5
-      --------------------------------------------------------
+      MODEL B
     */
 
-    setProgress(
-      60,
-      'Running Model B…'
-    );
+    try {
+
+      const model =
+        await loadE5();
 
 
-    scores.e5 =
-      await runModelSafely(
-        loadE5,
-        value,
-        'E5-small'
+      setProgress(
+        58,
+        'Running E5-small…'
       );
 
 
-    /*
-      Remove failed segment values before routing.
-    */
+      scores.e5 =
+        await classify(
+          model,
+          value
+        );
 
-    const usableSegments =
-      segmentScores.filter(
-        Number.isFinite
+    } catch (
+      error
+    ) {
+
+      console.error(
+        'E5 failed:',
+        error
       );
+    }
+
+
+    const mobile =
+      isMobileDevice();
+
+
+    let thirdUsed =
+      false;
+
+
+    if (
+      !mobile &&
+      Number.isFinite(
+        scores.tmr
+      ) &&
+      Number.isFinite(
+        scores.e5
+      )
+    ) {
+
+      thirdUsed =
+        shouldUseThirdModel({
+
+          scores,
+
+          human,
+
+          segmentScores,
+
+          domain:
+            domainInfo.domain,
+
+          words
+        });
+    }
 
 
     /*
-      --------------------------------------------------------
-      MODEL C ROUTING
-      --------------------------------------------------------
-    */
-
-    thirdUsed =
-      shouldUseThirdModel({
-
-        scores,
-
-        segmentScores:
-          usableSegments,
-
-        domain:
-          domainInfo.domain,
-
-        humanScore:
-          human.score,
-
-        words,
-
-        language
-      });
-
-
-    /*
-      --------------------------------------------------------
-      MODEL C — MODERNBERT
-      --------------------------------------------------------
+      MODEL C
     */
 
     if (
       thirdUsed
     ) {
 
-      setProgress(
-        72,
-        'Deep verification…'
-      );
+      try {
+
+        const model =
+          await loadModern();
 
 
-      scores.modern =
-        await runModelSafely(
-          loadModern,
-          value,
-          'ModernBERT'
+        setProgress(
+          74,
+          'Running ModernBERT judge…'
         );
 
 
-      if (
-        !Number.isFinite(
-          scores.modern
-        )
+        scores.modern =
+          await classify(
+            model,
+            value
+          );
+
+      } catch (
+        error
       ) {
+
+        console.error(
+          'ModernBERT failed:',
+          error
+        );
+
 
         thirdUsed =
           false;
@@ -4840,71 +3489,21 @@ async function runSmartScan() {
     }
 
 
-    /*
-      --------------------------------------------------------
-      MODEL FAILURE CHECK
-      --------------------------------------------------------
-    */
-
-    const activeScores =
-      Object.values(
-        scores
-      )
-        .filter(
-          Number.isFinite
-        );
-
-
     if (
-      !activeScores.length
-    ) {
-
-      throw new Error(
-        'No detector completed successfully.'
-      );
-    }
-
-
-    /*
-      If TMR segment inference completely failed,
-      use a neutral segment map.
-
-      This prevents the application from freezing
-      or generating NaN values.
-    */
-
-    if (
-      !usableSegments.length
+      !segmentScores.length
     ) {
 
       segmentScores =
         chunks.map(
-          () => 50
-        );
-
-    } else {
-
-      segmentScores =
-        segmentScores.map(
-          score =>
-            Number.isFinite(
-              score
-            )
-              ? score
-              : 50
+          () =>
+            50
         );
     }
 
 
-    /*
-      --------------------------------------------------------
-      ADAPTIVE BENCHMARK RELIABILITY
-      --------------------------------------------------------
-    */
-
     setProgress(
-      86,
-      'Evaluating detector reliability…'
+      90,
+      'Adaptive calibration…'
     );
 
 
@@ -4912,55 +3511,31 @@ async function runSmartScan() {
       loadBench();
 
 
-    const reliability =
-      buildModelReliability(
-        domainInfo.domain,
-        benchmarkRecords
-      );
-
-
-    /*
-      --------------------------------------------------------
-      CONSENSUS
-      --------------------------------------------------------
-    */
-
-    setProgress(
-      92,
-      'Calibrating evidence…'
-    );
-
-
     const consensus =
       buildConsensus({
 
         scores,
 
-        segmentScores,
-
         profile,
+
+        segmentScores,
 
         language,
 
         domain:
           domainInfo.domain,
 
-        domainConfidence:
-          domainInfo.confidence,
-
         human,
 
         thirdUsed,
 
-        reliability
+        benchmarkRecords
       });
 
 
-    /*
-      --------------------------------------------------------
-      FINAL SCAN OBJECT
-      --------------------------------------------------------
-    */
+    const reliability =
+      consensus.reliability;
+
 
     const scan = {
 
@@ -4980,16 +3555,13 @@ async function runSmartScan() {
       domainConfidence:
         domainInfo.confidence,
 
-      domainScores:
-        domainInfo.scores,
-
       profile,
+
+      human,
 
       scores,
 
       segmentScores,
-
-      human,
 
       reliability,
 
@@ -4997,66 +3569,15 @@ async function runSmartScan() {
     };
 
 
-    /*
-      --------------------------------------------------------
-      RENDER
-
-      Isolated so an interface bug cannot make
-      successful model inference look frozen.
-      --------------------------------------------------------
-    */
-
-    try {
-
-      render(
-        scan
-      );
-
-    } catch (renderError) {
-
-      console.error(
-        'Render error:',
-        renderError
-      );
+    renderScan(
+      scan
+    );
 
 
-      setState(
-        'Analysis complete • UI error'
-      );
+    saveHistory(
+      scan
+    );
 
-
-      alert(
-        'The analysis completed, but the result interface encountered an error. Check the browser console.'
-      );
-    }
-
-
-    /*
-      --------------------------------------------------------
-      HISTORY
-      --------------------------------------------------------
-    */
-
-    try {
-
-      saveHistory(
-        scan
-      );
-
-    } catch (historyError) {
-
-      console.warn(
-        'History save failed:',
-        historyError
-      );
-    }
-
-
-    /*
-      --------------------------------------------------------
-      COMPLETE
-      --------------------------------------------------------
-    */
 
     setProgress(
       100,
@@ -5065,11 +3586,11 @@ async function runSmartScan() {
 
 
     if (
-      isMobileDevice()
+      mobile
     ) {
 
       setState(
-        'V6.2 Mobile Safe • analysis complete ✓'
+        'V6.3 Mobile Safe ✓'
       );
 
     } else if (
@@ -5077,49 +3598,35 @@ async function runSmartScan() {
     ) {
 
       setState(
-        'V6.2 Adaptive 3-model engine ✓'
+        'V6.3 Adaptive 3-model engine ✓'
       );
 
     } else {
 
       setState(
-        'V6.2 Adaptive 2-model engine ✓'
+        'V6.3 Adaptive 2-model engine ✓'
       );
     }
 
 
-    /*
-      Benchmark prompt is delayed so the report
-      renders first.
-    */
-
     setTimeout(
       () => {
 
-        try {
-
-          benchmarkPrompt(
-            scan
-          );
-
-        } catch (error) {
-
-          console.warn(
-            'Benchmark prompt failed:',
-            error
-          );
-        }
+        benchmarkPrompt(
+          scan
+        );
 
       },
       700
     );
 
-
-  } catch (fatalError) {
+  } catch (
+    error
+  ) {
 
     console.error(
-      'AI Trace fatal scan error:',
-      fatalError
+      'Fatal scan error:',
+      error
     );
 
 
@@ -5129,46 +3636,31 @@ async function runSmartScan() {
 
 
     alert(
-      `AI Trace could not complete the analysis.\n\n${fatalError.message || 'Unknown error'}`
+      'AI Trace encountered an error during analysis. Refresh the page and try again.'
     );
-
 
   } finally {
 
     if (
-      scanButton
+      $('scan')
     ) {
 
-      scanButton.disabled =
+      $('scan').disabled =
         false;
     }
-
 
     hideProgress();
   }
 }
-/* ============================================================
-   AI TRACE V6.2
-   PART 3 / 3
-
-   - Report rendering
-   - Adaptive reliability dashboard
-   - Benchmark prompt
-   - Benchmark metrics
-   - Domain metrics
-   - Error inspectors
-   - History
-   - JSON / CSV export
-   - Developer utilities
-   - Initialization
-============================================================ */
 
 
 /* ============================================================
-   MAIN REPORT RENDER
+   REPORT RENDER
 ============================================================ */
 
-function render(scan) {
+function renderScan(
+  scan
+) {
 
   const {
     consensus,
@@ -5178,8 +3670,7 @@ function render(scan) {
     domain,
     domainConfidence,
     segmentScores,
-    profile,
-    reliability
+    profile
   } = scan;
 
 
@@ -5190,34 +3681,36 @@ function render(scan) {
     );
 
 
-  const resolvedDecision =
+  const resolved =
     consensus.verdict !==
     'INCONCLUSIVE';
 
 
-  /* ==========================================================
-     TOP SCORE
-  ========================================================== */
-
-  if ($('score')) {
+  if (
+    $('score')
+  ) {
 
     $('score').textContent =
-      resolvedDecision
+      resolved
         ? `${consensus.calibrated}%`
         : '—';
   }
 
 
-  if ($('scaleFill')) {
+  if (
+    $('scaleFill')
+  ) {
 
     $('scaleFill').style.width =
-      resolvedDecision
+      resolved
         ? `${consensus.calibrated}%`
         : '0%';
   }
 
 
-  if ($('verdict')) {
+  if (
+    $('verdict')
+  ) {
 
     $('verdict').textContent =
       consensus.verdict;
@@ -5225,23 +3718,32 @@ function render(scan) {
 
 
   const confidenceLabel =
-    consensus.confidence >= 75
+    consensus.confidence >=
+      75
       ? 'High'
-      : consensus.confidence >= 50
+      : consensus.confidence >=
+          50
         ? 'Medium'
         : 'Low';
 
 
-  if ($('confidence')) {
+  if (
+    $('confidence')
+  ) {
 
     $('confidence').textContent =
       `Evidence confidence: ${confidenceLabel} (${consensus.confidence}%)`;
   }
 
 
-  if ($('explain')) {
+  if (
+    $('explain')
+  ) {
 
-    let explanation = '';
+    let text =
+      `Diagnostic detector signal: ${consensus.calibrated}%. ` +
+      `Evidence sufficiency: ${consensus.sufficiency.score}% (${consensus.sufficiency.level}). ` +
+      `Model agreement: ${consensus.modelAgreement.agreement}%.`;
 
 
     if (
@@ -5249,26 +3751,17 @@ function render(scan) {
       'INCONCLUSIVE'
     ) {
 
-      explanation =
+      text =
         `AI Trace abstained because the available evidence was not strong enough for a reliable AI/Human attribution. ` +
-        `Diagnostic AI signal: ${consensus.calibrated}%. ` +
-        `Evidence sufficiency: ${consensus.sufficiency.score}% (${consensus.sufficiency.level}). ` +
-        `Active models: ${consensus.activeModels}/3.`;
-
-    } else {
-
-      explanation =
-        `The decision combines adaptive detector reliability, model agreement, domain context, segment stability and human counter-evidence. ` +
-        `Diagnostic AI signal: ${consensus.calibrated}%. ` +
-        `Evidence sufficiency: ${consensus.sufficiency.score}%.`;
+        text;
     }
 
 
     if (
-      consensus.outlier?.detected
+      consensus.outlier.detected
     ) {
 
-      explanation +=
+      text +=
         ` ${String(
           consensus.outlier.detector
         ).toUpperCase()} was down-weighted as a possible detector outlier.`;
@@ -5276,117 +3769,107 @@ function render(scan) {
 
 
     $('explain').textContent =
-      explanation;
+      text;
   }
 
-
-  /* ==========================================================
-     TRACE DNA
-  ========================================================== */
 
   const humanDisplay =
     clamp(
       Math.round(
-        human.score * 0.72 +
+        human.score *
+        0.72 +
         (
           100 -
           consensus.calibrated
-        ) * 0.28
+        ) *
+        0.28
       )
     );
 
 
-  if ($('humanVal')) {
+  if (
+    $('humanVal')
+  ) {
 
     $('humanVal').textContent =
       `${humanDisplay}%`;
   }
 
 
-  if ($('aiVal')) {
+  if (
+    $('aiVal')
+  ) {
 
     $('aiVal').textContent =
-      resolvedDecision
+      resolved
         ? `${consensus.calibrated}%`
         : 'N/A';
   }
 
 
-  if ($('uncertainVal')) {
+  if (
+    $('uncertainVal')
+  ) {
 
     $('uncertainVal').textContent =
       `${consensus.uncertainty}%`;
   }
 
 
-  if ($('humanBar')) {
+  if (
+    $('humanBar')
+  ) {
 
     $('humanBar').style.width =
       `${humanDisplay}%`;
   }
 
 
-  if ($('aiBar')) {
+  if (
+    $('aiBar')
+  ) {
 
     $('aiBar').style.width =
-      resolvedDecision
+      resolved
         ? `${consensus.calibrated}%`
         : '0%';
   }
 
 
-  if ($('uncertainBar')) {
+  if (
+    $('uncertainBar')
+  ) {
 
     $('uncertainBar').style.width =
       `${consensus.uncertainty}%`;
   }
 
 
-  /* ==========================================================
-     ENGINE BADGE
-  ========================================================== */
-
-  if ($('engineBadge')) {
+  if (
+    $('engineBadge')
+  ) {
 
     if (
-      consensus.activeModels <= 1
+      consensus.outlier.detected
     ) {
 
       $('engineBadge').textContent =
-        'V6.2 • LIMITED EVIDENCE';
-
-    } else if (
-      consensus.outlier?.detected
-    ) {
-
-      $('engineBadge').textContent =
-        'V6.2 • ADAPTIVE OUTLIER DEFENSE';
+        'V6.3 • ADAPTIVE OUTLIER DEFENSE';
 
     } else if (
       consensus.thirdUsed
     ) {
 
       $('engineBadge').textContent =
-        'V6.2 • ADAPTIVE 3-MODEL';
-
-    } else if (
-      isMobileDevice()
-    ) {
-
-      $('engineBadge').textContent =
-        'V6.2 • MOBILE SAFE';
+        'V6.3 • 3-MODEL CALIBRATED';
 
     } else {
 
       $('engineBadge').textContent =
-        'V6.2 • ADAPTIVE CONSENSUS';
+        'V6.3 • ADAPTIVE CONSENSUS';
     }
   }
 
-
-  /* ==========================================================
-     EVIDENCE CONTENT
-  ========================================================== */
 
   const humanReasons =
     human.reasons.length
@@ -5401,73 +3884,55 @@ function render(scan) {
       : 'No strong human-style counter-signals';
 
 
-  const reliabilityText =
+  const reliabilityLine =
     detector => {
 
-      const model =
-        reliability?.[
+      const reliability =
+        consensus.reliability[
           detector
         ];
 
+      if (
+        !reliability
+      ) {
 
-      if (!model) {
-        return 'No reliability data';
+        return 'No calibration data';
       }
 
-
-      const base =
-        model.base ??
-        1;
-
-
-      const ai =
-        model.ai?.weight ??
-        1;
-
-
-      const humanWeight =
-        model.human?.weight ??
-        1;
-
-
-      return `Base ${Number(base).toFixed(2)} · AI ${Number(ai).toFixed(2)} · Human ${Number(humanWeight).toFixed(2)}`;
+      return (
+        `Base ${Number(
+          reliability.base
+        ).toFixed(2)} · ` +
+        `AI ${Number(
+          reliability.ai.weight
+        ).toFixed(2)} · ` +
+        `Human ${Number(
+          reliability.human.weight
+        ).toFixed(2)}`
+      );
     };
 
 
-  const weightText =
+  const modelWeightLine =
     detector => {
 
       const item =
-        consensus.modelWeights?.[
+        consensus.modelWeights[
           detector
         ];
 
+      if (
+        !item
+      ) {
 
-      if (!item) {
         return 'Inactive';
       }
 
-
-      return `${item.score}% signal · effective weight ${item.weight}`;
+      return (
+        `${item.score}% signal · ` +
+        `effective weight ${item.weight}`
+      );
     };
-
-
-  const modernText =
-    Number.isFinite(
-      scores.modern
-    )
-      ? `${scores.modern}% AI signal`
-      : isMobileDevice()
-        ? 'Disabled on mobile for memory stability'
-        : 'Not required / unavailable';
-
-
-  const outlierText =
-    consensus.outlier?.detected
-      ? `${String(
-          consensus.outlier.detector
-        ).toUpperCase()} flagged as possible outlier · distance ${consensus.outlier.distance} points`
-      : 'No clear detector outlier';
 
 
   const evidence = [
@@ -5481,9 +3946,7 @@ function render(scan) {
     [
       'Diagnostic AI signal',
       `${consensus.calibrated}%`,
-      resolvedDecision
-        ? 'Resolved'
-        : 'Not a probability'
+      'Not proof'
     ],
 
     [
@@ -5493,27 +3956,21 @@ function render(scan) {
     ],
 
     [
+      'Detector median',
+      `${consensus.rawMedian}%`,
+      'Robust diagnostic'
+    ],
+
+    [
       'Evidence sufficiency',
       `${consensus.sufficiency.score}% — ${consensus.sufficiency.level}`,
-      consensus.sufficiency.score >= 75
-        ? 'Strong'
-        : consensus.sufficiency.score >= 55
-          ? 'Moderate'
-          : 'Weak'
+      consensus.sufficiency.level
     ],
 
     [
       'Model agreement',
       `${consensus.modelAgreement.agreement}%`,
       `Spread ${consensus.modelSpread} pts`
-    ],
-
-    [
-      'Active models',
-      `${consensus.activeModels}/3`,
-      consensus.activeModels >= 2
-        ? 'Usable redundancy'
-        : 'Insufficient'
     ],
 
     [
@@ -5528,10 +3985,10 @@ function render(scan) {
 
     [
       'TMR adaptive weight',
-      weightText(
+      modelWeightLine(
         'tmr'
       ),
-      reliabilityText(
+      reliabilityLine(
         'tmr'
       )
     ],
@@ -5548,26 +4005,30 @@ function render(scan) {
 
     [
       'E5 adaptive weight',
-      weightText(
+      modelWeightLine(
         'e5'
       ),
-      reliabilityText(
+      reliabilityLine(
         'e5'
       )
     ],
 
     [
       'ModernBERT judge',
-      modernText,
+      Number.isFinite(
+        scores.modern
+      )
+        ? `${scores.modern}% AI signal`
+        : 'Not required / unavailable',
       'Model C'
     ],
 
     [
-      'ModernBERT adaptive weight',
-      weightText(
+      'Modern adaptive weight',
+      modelWeightLine(
         'modern'
       ),
-      reliabilityText(
+      reliabilityLine(
         'modern'
       )
     ],
@@ -5575,17 +4036,23 @@ function render(scan) {
     [
       'Human counter-evidence',
       `${human.score}% — ${humanReasons}`,
-      human.score >= 55
+      human.score >=
+        55
         ? 'Strong'
-        : human.score >= 35
+        : human.score >=
+            35
           ? 'Moderate'
           : 'Low'
     ],
 
     [
       'Outlier analysis',
-      outlierText,
-      consensus.outlier?.detected
+      consensus.outlier.detected
+        ? `${String(
+            consensus.outlier.detector
+          ).toUpperCase()} · distance ${consensus.outlier.distance} pts`
+        : 'No clear detector outlier',
+      consensus.outlier.detected
         ? 'Down-weighted'
         : 'Clear'
     ],
@@ -5593,31 +4060,24 @@ function render(scan) {
     [
       'Segment stability',
       `${consensus.segmentAnalysis.stability}%`,
-      `Range ${consensus.segmentRange} pts`
-    ],
-
-    [
-      'Segment profile',
-      `${consensus.segmentAnalysis.aiSegments} AI · ${consensus.segmentAnalysis.humanSegments} Human · ${consensus.segmentAnalysis.uncertainSegments} uncertain`,
-      consensus.segmentAnalysis.mixed
-        ? 'Mixed'
-        : 'Consistent'
+      `Range ${consensus.segmentAnalysis.range} pts`
     ],
 
     [
       'Domain context',
       `${domain} (${domainConfidence} confidence)`,
-      (
-        domain === 'books' ||
-        domain === 'poetry'
-      )
-        ? 'Protected domain'
+      domain ===
+        'books' ||
+      domain ===
+        'poetry'
+        ? 'Protected'
         : 'Context'
     ],
 
     [
       'Language fit',
-      language === 'English'
+      language ===
+        'English'
         ? 'English — strongest supported path'
         : 'Non-English — reduced reliability',
       'Context'
@@ -5625,7 +4085,9 @@ function render(scan) {
   ];
 
 
-  if ($('evidence')) {
+  if (
+    $('evidence')
+  ) {
 
     $('evidence').innerHTML =
       evidence
@@ -5636,25 +4098,25 @@ function render(scan) {
 
   <div class="evTop">
 
-    <span>
-      ${escapeHTML(
-        item[0]
-      )}
-    </span>
+    <span>${escapeHTML(
+      item[
+        0
+      ]
+    )}</span>
 
-    <span>
-      ${escapeHTML(
-        item[2]
-      )}
-    </span>
+    <span>${escapeHTML(
+      item[
+        2
+      ]
+    )}</span>
 
   </div>
 
-  <small>
-    ${escapeHTML(
-      item[1]
-    )}
-  </small>
+  <small>${escapeHTML(
+    item[
+      1
+    ]
+  )}</small>
 
 </div>
 
@@ -5663,10 +4125,6 @@ function render(scan) {
         .join('');
   }
 
-
-  /* ==========================================================
-     DOCUMENT METRICS
-  ========================================================== */
 
   const metrics = {
 
@@ -5737,8 +4195,8 @@ function render(scan) {
     'Segment stability':
       `${consensus.segmentAnalysis.stability}%`,
 
-    'Outlier':
-      consensus.outlier?.detected
+    Outlier:
+      consensus.outlier.detected
         ? consensus.outlier.detector
         : 'None',
 
@@ -5747,7 +4205,9 @@ function render(scan) {
   };
 
 
-  if ($('metrics')) {
+  if (
+    $('metrics')
+  ) {
 
     $('metrics').innerHTML =
       Object.entries(
@@ -5763,19 +4223,13 @@ function render(scan) {
 
 <div class="metric">
 
-  <span>
-    ${escapeHTML(
-      key
-    )}
-  </span>
+  <span>${escapeHTML(
+    key
+  )}</span>
 
-  <b>
-    ${escapeHTML(
-      String(
-        value
-      )
-    )}
-  </b>
+  <b>${escapeHTML(
+    value
+  )}</b>
 
 </div>
 
@@ -5785,10 +4239,6 @@ function render(scan) {
   }
 
 
-  /* ==========================================================
-     TRACE MAP
-  ========================================================== */
-
   const chunks =
     chunkText(
       textEl?.value
@@ -5797,7 +4247,9 @@ function render(scan) {
     );
 
 
-  if ($('segments')) {
+  if (
+    $('segments')
+  ) {
 
     $('segments').innerHTML =
       chunks
@@ -5814,24 +4266,14 @@ function render(scan) {
               50;
 
 
-            let label =
-              'Uncertain';
-
-
-            if (
-              score >= 70
-            ) {
-
-              label =
-                'AI-supporting';
-
-            } else if (
-              score <= 30
-            ) {
-
-              label =
-                'Human-supporting';
-            }
+            const label =
+              score >=
+                70
+                ? 'AI-supporting'
+                : score <=
+                    30
+                  ? 'Human-supporting'
+                  : 'Uncertain';
 
 
             return `
@@ -5852,11 +4294,9 @@ function render(scan) {
 
   <div class="segmentMeter">
 
-    <i
-      style="width:${clamp(
-        score
-      )}%"
-    ></i>
+    <i style="width:${clamp(
+      score
+    )}%"></i>
 
   </div>
 
@@ -5895,7 +4335,9 @@ function render(scan) {
     });
 
 
-  renderBenchmarkPanel();
+  renderDatasetManager();
+
+  renderCalibrationLab();
 }
 
 
@@ -5909,20 +4351,23 @@ function benchmarkPrompt(
 
   const answer =
     prompt(
-`AI TRACE V6.2 BENCHMARK LAB
+`AI TRACE V6.3 BENCHMARK
 
-Only label samples whose TRUE origin you know.
+Only label samples whose true origin you KNOW.
 
 AI      = definitely AI-generated
 HUMAN   = definitely human-written
-MIXED   = known human + AI mixture
-UNKNOWN = origin not known
+MIXED   = known mixture
+UNKNOWN = unknown origin
 
 Cancel / leave empty to skip.`
     );
 
 
-  if (!answer) {
+  if (
+    !answer
+  ) {
+
     return;
   }
 
@@ -5945,7 +4390,7 @@ Cancel / leave empty to skip.`
   ) {
 
     alert(
-      'Benchmark skipped. Use AI, HUMAN, MIXED or UNKNOWN.'
+      'Use AI, HUMAN, MIXED or UNKNOWN.'
     );
 
     return;
@@ -5956,14 +4401,15 @@ Cancel / leave empty to skip.`
     prompt(
       'Source / note:',
       ''
-    ) || '';
+    ) ||
+    '';
 
 
   const records =
     loadBench();
 
 
-  const prefixes = {
+  const prefix = {
 
     AI:
       'A',
@@ -5976,36 +4422,27 @@ Cancel / leave empty to skip.`
 
     UNKNOWN:
       'U'
-  };
+  }[
+    truth
+  ];
 
 
-  const sameClass =
+  const sameType =
     records.filter(
       record =>
-        record.truth === truth
+        record.truth ===
+        truth
     ).length;
 
 
   const id =
-    `${prefixes[
-      truth
-    ]}-${String(
-      sameClass + 1
+    `${prefix}-${String(
+      sameType + 1
     ).padStart(
       3,
       '0'
     )}`;
 
-
-  /*
-    IMPORTANT:
-
-    The prediction already happened before this
-    ground-truth label is stored.
-
-    Therefore the new sample cannot alter its own
-    prediction.
-  */
 
   records.push({
 
@@ -6030,345 +4467,92 @@ Cancel / leave empty to skip.`
   );
 
 
-  renderBenchmarkPanel();
+  renderDatasetManager();
 
-
-  const metrics =
-    evaluatePredictions(
-      binaryRecords(
-        records
-      ),
-      benchmarkPrediction
-    );
+  renderCalibrationLab();
 
 
   alert(
-`Benchmark saved: ${id}
-
-AI samples: ${metrics.totalAI}
-HUMAN samples: ${metrics.totalHuman}
-
-Coverage: ${metrics.coverage}%
-Selective accuracy: ${metrics.selectiveAccuracy}%
-
-False-positive rate: ${metrics.fpr}%
-False-negative rate: ${metrics.fnr}%
-
-AI abstention rate: ${metrics.aiAbstainRate}%
-Human abstention rate: ${metrics.humanAbstainRate}%
-
-Development measurements only.`
+    `Benchmark saved: ${id}`
   );
 }
 
 
 /* ============================================================
-   DOMAIN PERFORMANCE
+   DATASET SUMMARY
 ============================================================ */
 
-function domainPerformance(
-  records = loadBench()
+function datasetSummary(
+  records =
+    loadBench()
 ) {
-
-  const rows =
-    binaryRecords(
-      records
-    );
-
-
-  const domains =
-    new Map();
-
-
-  for (
-    const record
-    of rows
-  ) {
-
-    const domain =
-      record.domain ||
-      'general';
-
-
-    if (
-      !domains.has(
-        domain
-      )
-    ) {
-
-      domains.set(
-        domain,
-        []
-      );
-    }
-
-
-    domains
-      .get(
-        domain
-      )
-      .push(
-        record
-      );
-  }
-
-
-  return [
-    ...domains.entries()
-  ]
-    .map(
-      (
-        [
-          domain,
-          domainRows
-        ]
-      ) => {
-
-        const metrics =
-          evaluatePredictions(
-            domainRows,
-            benchmarkPrediction
-          );
-
-
-        return {
-
-          domain,
-
-          ...metrics
-        };
-      }
-    )
-    .sort(
-      (
-        a,
-        b
-      ) =>
-        b.total -
-        a.total
-    );
-}
-
-
-/* ============================================================
-   BENCHMARK INSPECTORS
-============================================================ */
-
-function falsePositiveRecords(
-  records = loadBench()
-) {
-
-  return binaryRecords(
-    records
-  )
-    .filter(
-      record =>
-        record.truth ===
-          'HUMAN' &&
-        benchmarkPrediction(
-          record
-        ) ===
-          'AI'
-    );
-}
-
-
-function falseNegativeRecords(
-  records = loadBench()
-) {
-
-  return binaryRecords(
-    records
-  )
-    .filter(
-      record =>
-        record.truth ===
-          'AI' &&
-        benchmarkPrediction(
-          record
-        ) ===
-          'HUMAN'
-    );
-}
-
-
-function abstentionRecords(
-  records = loadBench()
-) {
-
-  return binaryRecords(
-    records
-  )
-    .filter(
-      record =>
-        benchmarkPrediction(
-          record
-        ) ===
-        'ABSTAIN'
-    );
-}
-
-
-/* ============================================================
-   BENCHMARK READINESS
-============================================================ */
-
-function benchmarkReadiness(
-  records = loadBench()
-) {
-
-  const rows =
-    binaryRecords(
-      records
-    );
-
-
-  const ai =
-    rows.filter(
-      record =>
-        record.truth ===
-        'AI'
-    ).length;
-
-
-  const human =
-    rows.filter(
-      record =>
-        record.truth ===
-        'HUMAN'
-    ).length;
-
-
-  const domains =
-    new Set(
-      rows.map(
-        record =>
-          record.domain ||
-          'general'
-      )
-    ).size;
-
-
-  let level =
-    'COLLECTING';
-
-
-  if (
-    rows.length >= 250 &&
-    ai >= 100 &&
-    human >= 100 &&
-    domains >= 5
-  ) {
-
-    level =
-      'STRONG';
-
-  } else if (
-    rows.length >= 120 &&
-    ai >= 50 &&
-    human >= 50 &&
-    domains >= 4
-  ) {
-
-    level =
-      'GOOD';
-
-  } else if (
-    rows.length >= 50 &&
-    ai >= 20 &&
-    human >= 20 &&
-    domains >= 3
-  ) {
-
-    level =
-      'EARLY';
-
-  } else if (
-    rows.length >= 20 &&
-    ai >= 8 &&
-    human >= 8
-  ) {
-
-    level =
-      'EXPERIMENTAL';
-  }
-
-
-  return {
-
-    level,
-
-    total:
-      rows.length,
-
-    ai,
-
-    human,
-
-    domains
-  };
-}
-
-
-/* ============================================================
-   BENCHMARK PANEL
-============================================================ */
-
-function renderBenchmarkPanel() {
-
-  const report =
-    $('report');
-
-
-  if (!report) {
-    return;
-  }
-
-
-  let panel =
-    $('benchmarkPanelV62');
-
-
-  if (!panel) {
-
-    panel =
-      document.createElement(
-        'section'
-      );
-
-
-    panel.id =
-      'benchmarkPanelV62';
-
-
-    panel.className =
-      'panel devPanel';
-
-
-    panel.style.marginTop =
-      '18px';
-
-
-    report.appendChild(
-      panel
-    );
-  }
-
-
-  const records =
-    loadBench();
-
 
   const binary =
     binaryRecords(
       records
     );
 
+  return {
 
-  const metrics =
-    evaluatePredictions(
-      binary,
-      benchmarkPrediction
+    total:
+      records.length,
+
+    binary:
+      binary.length,
+
+    ai:
+      records.filter(
+        record =>
+          record.truth ===
+          'AI'
+      ).length,
+
+    human:
+      records.filter(
+        record =>
+          record.truth ===
+          'HUMAN'
+      ).length,
+
+    mixed:
+      records.filter(
+        record =>
+          record.truth ===
+          'MIXED'
+      ).length,
+
+    unknown:
+      records.filter(
+        record =>
+          record.truth ===
+          'UNKNOWN'
+      ).length,
+
+    domains:
+      new Set(
+        records.map(
+          record =>
+            record.domain ||
+            'general'
+        )
+      ).size
+  };
+}
+
+
+/* ============================================================
+   DATASET MANAGER RENDER
+============================================================ */
+
+function renderDatasetManager() {
+
+  const records =
+    loadBench();
+
+
+  const summary =
+    datasetSummary(
+      records
     );
 
 
@@ -6378,142 +4562,106 @@ function renderBenchmarkPanel() {
     );
 
 
-  const domains =
-    domainPerformance(
-      records
-    );
-
-
-  const falsePositives =
-    falsePositiveRecords(
-      records
-    );
-
-
-  const falseNegatives =
-    falseNegativeRecords(
-      records
-    );
-
-
-  const abstentions =
-    abstentionRecords(
-      records
-    );
-
-
-  const mixed =
-    records.filter(
-      record =>
-        record.truth ===
-        'MIXED'
-    );
-
-
-  const reliability =
-    buildModelReliability(
-      'general',
-      records
-    );
-
-
-  const detectorHTML =
-    [
-      'tmr',
-      'e5',
-      'modern'
-    ]
-      .map(
-        detector => {
-
-          const global =
-            reliability[
-              detector
-            ]?.global;
-
-
-          const metrics =
-            global?.metrics;
-
-
-          const base =
-            reliability[
-              detector
-            ]?.base ??
-            1;
-
-
-          return `
-
-<div class="ev">
-
-  <div class="evTop">
-
-    <span>
-      ${escapeHTML(
-        detector.toUpperCase()
-      )}
-    </span>
-
-    <span>
-      ${global?.samples ?? 0} samples
-    </span>
-
-  </div>
-
-  <small>
-    Reliability ${Number(
-      base
-    ).toFixed(
-      2
-    )}
-    · Accuracy ${metrics?.selectiveAccuracy ?? 0}%
-    · Coverage ${metrics?.coverage ?? 0}%
-    · FPR ${metrics?.fpr ?? 0}%
-    · FNR ${metrics?.fnr ?? 0}%
-  </small>
-
-</div>
-
-`;
-        }
-      )
-      .join('');
-
-
-  const domainHTML =
-    domains
-      .map(
-        item => `
-
-<div class="metric">
-
-  <span>
-    ${escapeHTML(
-      item.domain
-    )}
-  </span>
-
-  <b>
-    ${item.total} samples
-    · Acc ${item.selectiveAccuracy}%
-    · Coverage ${item.coverage}%
-    · FPR ${item.fpr}%
-    · FNR ${item.fnr}%
-  </b>
-
-</div>
-
-`
-      )
-      .join('');
-
-
-  function recordCard(
-    record
+  if (
+    $('datasetTotal')
   ) {
 
-    return `
+    $('datasetTotal').textContent =
+      summary.total;
+  }
+
+
+  if (
+    $('datasetBinary')
+  ) {
+
+    $('datasetBinary').textContent =
+      summary.binary;
+  }
+
+
+  if (
+    $('datasetAI')
+  ) {
+
+    $('datasetAI').textContent =
+      summary.ai;
+  }
+
+
+  if (
+    $('datasetHuman')
+  ) {
+
+    $('datasetHuman').textContent =
+      summary.human;
+  }
+
+
+  if (
+    $('datasetMixed')
+  ) {
+
+    $('datasetMixed').textContent =
+      summary.mixed;
+  }
+
+
+  if (
+    $('datasetUnknown')
+  ) {
+
+    $('datasetUnknown').textContent =
+      summary.unknown;
+  }
+
+
+  if (
+    $('datasetDomains')
+  ) {
+
+    $('datasetDomains').textContent =
+      summary.domains;
+  }
+
+
+  if (
+    $('datasetStatusBadge')
+  ) {
+
+    $('datasetStatusBadge').textContent =
+      readiness.level;
+  }
+
+
+  if (
+    $('benchmarkReadinessTop')
+  ) {
+
+    $('benchmarkReadinessTop').textContent =
+      `Dataset: ${readiness.level}`;
+  }
+
+
+  if (
+    $('datasetRecords')
+  ) {
+
+    const recent =
+      records
+        .slice()
+        .reverse()
+        .slice(
+          0,
+          12
+        );
+
+
+    $('datasetRecords').innerHTML =
+      recent.length
+        ? recent
+            .map(
+              record => `
 
 <div class="ev">
 
@@ -6540,28 +4688,240 @@ function renderBenchmarkPanel() {
       record.domain ||
       'general'
     )}
-    · Prediction ${escapeHTML(
-      benchmarkPrediction(
-        record
-      )
+    · ${escapeHTML(
+      record.source ||
+      'No source'
     )}
-    · Signal ${escapeHTML(
-      String(
-        record.consensus
-          ?.calibrated ??
-        '?'
+    · ${wordCount(
+      record.text ||
+      ''
+    ) || record.words || 0} words
+  </small>
+
+</div>
+
+`
+            )
+            .join('')
+        : `
+
+<div class="ev">
+
+  <small>
+    No V6.3 dataset records yet.
+  </small>
+
+</div>
+
+`;
+  }
+}
+
+
+/* ============================================================
+   DOMAIN PERFORMANCE
+============================================================ */
+
+function domainPerformance(
+  records =
+    loadBench()
+) {
+
+  const rows =
+    binaryRecords(
+      records
+    );
+
+
+  const groups =
+    new Map();
+
+
+  for (
+    const row
+    of rows
+  ) {
+
+    const domain =
+      row.domain ||
+      'general';
+
+
+    if (
+      !groups.has(
+        domain
       )
-    )}%
-    · Sufficiency ${escapeHTML(
-      String(
-        record.consensus
-          ?.sufficiency
-          ?.score ??
-        record.consensus
-          ?.quality ??
-        '?'
+    ) {
+
+      groups.set(
+        domain,
+        []
+      );
+    }
+
+
+    groups
+      .get(
+        domain
       )
-    )}%
+      .push(
+        row
+      );
+  }
+
+
+  return [
+    ...groups.entries()
+  ]
+    .map(
+      (
+        [
+          domain,
+          rows
+        ]
+      ) => ({
+
+        domain,
+
+        ...evaluatePredictions(
+          rows,
+          benchmarkPrediction
+        )
+      })
+    );
+}
+
+
+/* ============================================================
+   INSPECTORS
+============================================================ */
+
+function falsePositiveRecords(
+  records =
+    loadBench()
+) {
+
+  return binaryRecords(
+    records
+  )
+    .filter(
+      record =>
+        record.truth ===
+          'HUMAN' &&
+        benchmarkPrediction(
+          record
+        ) ===
+          'AI'
+    );
+}
+
+
+function falseNegativeRecords(
+  records =
+    loadBench()
+) {
+
+  return binaryRecords(
+    records
+  )
+    .filter(
+      record =>
+        record.truth ===
+          'AI' &&
+        benchmarkPrediction(
+          record
+        ) ===
+          'HUMAN'
+    );
+}
+
+
+function abstentionRecords(
+  records =
+    loadBench()
+) {
+
+  return binaryRecords(
+    records
+  )
+    .filter(
+      record =>
+        benchmarkPrediction(
+          record
+        ) ===
+          'ABSTAIN'
+    );
+}
+
+
+/* ============================================================
+   CALIBRATION LAB
+============================================================ */
+
+function renderCalibrationLab() {
+
+  const records =
+    loadBench();
+
+
+  const rows =
+    binaryRecords(
+      records
+    );
+
+
+  const readiness =
+    benchmarkReadiness(
+      records
+    );
+
+
+  const ensemble =
+    evaluatePredictions(
+      rows,
+      benchmarkPrediction
+    );
+
+
+  if (
+    $('calibrationStatusBadge')
+  ) {
+
+    $('calibrationStatusBadge').textContent =
+      readiness.level;
+  }
+
+
+  if (
+    $('calibrationReadiness')
+  ) {
+
+    $('calibrationReadiness').innerHTML = `
+
+<div class="ev">
+
+  <div class="evTop">
+
+    <span>
+      ${readiness.level}
+    </span>
+
+    <span>
+      ${
+        readiness.level ===
+        'COLLECTING'
+          ? 'LEARNING LIMITED'
+          : 'CALIBRATION ACTIVE'
+      }
+    </span>
+
+  </div>
+
+  <small>
+    ${readiness.total} binary samples
+    · ${readiness.ai} AI
+    · ${readiness.human} HUMAN
+    · ${readiness.domains} domains
   </small>
 
 </div>
@@ -6570,282 +4930,873 @@ function renderBenchmarkPanel() {
   }
 
 
-  const fpHTML =
-    falsePositives
-      .slice()
-      .reverse()
-      .slice(
-        0,
-        10
-      )
-      .map(
-        recordCard
-      )
-      .join('');
+  if (
+    $('ensembleMetrics')
+  ) {
+
+    const metrics = {
+
+      'Binary samples':
+        ensemble.total,
+
+      Coverage:
+        `${ensemble.coverage}%`,
+
+      'Selective accuracy':
+        `${ensemble.selectiveAccuracy}%`,
+
+      Precision:
+        `${ensemble.precision}%`,
+
+      'AI recall':
+        `${ensemble.recall}%`,
+
+      'Human specificity':
+        `${ensemble.specificity}%`,
+
+      'False-positive rate':
+        `${ensemble.fpr}%`,
+
+      'False-negative rate':
+        `${ensemble.fnr}%`,
+
+      'AI abstention rate':
+        `${ensemble.aiAbstainRate}%`,
+
+      'Human abstention rate':
+        `${ensemble.humanAbstainRate}%`
+    };
 
 
-  const fnHTML =
-    falseNegatives
-      .slice()
-      .reverse()
-      .slice(
-        0,
-        10
+    $('ensembleMetrics').innerHTML =
+      Object.entries(
+        metrics
       )
-      .map(
-        recordCard
-      )
-      .join('');
+        .map(
+          (
+            [
+              label,
+              value
+            ]
+          ) => `
+
+<div class="metric">
+
+  <span>
+    ${escapeHTML(
+      label
+    )}
+  </span>
+
+  <b>
+    ${escapeHTML(
+      value
+    )}
+  </b>
+
+</div>
+
+`
+        )
+        .join('');
+  }
 
 
-  const abstentionHTML =
-    abstentions
-      .slice()
-      .reverse()
-      .slice(
-        0,
-        10
-      )
-      .map(
-        recordCard
-      )
-      .join('');
+  /*
+    Detector reliability
+  */
+
+  if (
+    $('detectorReliability')
+  ) {
+
+    const reliability =
+      buildModelReliability(
+        'general',
+        records
+      );
 
 
-  const recentHTML =
+    $('detectorReliability').innerHTML =
+      [
+        'tmr',
+        'e5',
+        'modern'
+      ]
+        .map(
+          detector => {
+
+            const item =
+              reliability[
+                detector
+              ];
+
+            const metrics =
+              item.global.metrics;
+
+
+            return `
+
+<div class="ev">
+
+  <div class="evTop">
+
+    <span>
+      ${escapeHTML(
+        detector.toUpperCase()
+      )}
+    </span>
+
+    <span>
+      ${item.global.samples} samples
+    </span>
+
+  </div>
+
+  <small>
+    Reliability ${Number(
+      item.base
+    ).toFixed(
+      2
+    )}
+    · AI weight ${Number(
+      item.ai.weight
+    ).toFixed(
+      2
+    )}
+    · Human weight ${Number(
+      item.human.weight
+    ).toFixed(
+      2
+    )}
+    · Accuracy ${metrics.selectiveAccuracy}%
+    · Coverage ${metrics.coverage}%
+    · FPR ${metrics.fpr}%
+    · FNR ${metrics.fnr}%
+  </small>
+
+</div>
+
+`;
+          }
+        )
+        .join('');
+  }
+
+
+  /*
+    Domain performance
+  */
+
+  if (
+    $('domainPerformance')
+  ) {
+
+    const domainRows =
+      domainPerformance(
+        records
+      );
+
+
+    $('domainPerformance').innerHTML =
+      domainRows.length
+        ? domainRows
+            .map(
+              item => `
+
+<div class="metric">
+
+  <span>
+    ${escapeHTML(
+      item.domain
+    )}
+  </span>
+
+  <b>
+    ${item.total} samples
+    · Acc ${item.selectiveAccuracy}%
+    · Coverage ${item.coverage}%
+    · FPR ${item.fpr}%
+    · FNR ${item.fnr}%
+  </b>
+
+</div>
+
+`
+            )
+            .join('')
+        : `
+
+<div class="metric">
+
+  <span>No domain data</span>
+
+  <b>—</b>
+
+</div>
+
+`;
+  }
+
+
+  renderInspector(
+    'falsePositiveInspector',
+    falsePositiveRecords(
+      records
+    ),
+    'No known HUMAN sample has been classified as AI.'
+  );
+
+
+  renderInspector(
+    'falseNegativeInspector',
+    falseNegativeRecords(
+      records
+    ),
+    'No known AI sample has been classified as HUMAN.'
+  );
+
+
+  renderInspector(
+    'abstentionInspector',
+    abstentionRecords(
+      records
+    ),
+    'No binary abstentions recorded.'
+  );
+}
+
+
+function renderInspector(
+  elementId,
+  records,
+  emptyText
+) {
+
+  const element =
+    $(
+      elementId
+    );
+
+
+  if (
+    !element
+  ) {
+
+    return;
+  }
+
+
+  if (
+    !records.length
+  ) {
+
+    element.innerHTML = `
+
+<div class="ev">
+
+  <small>
+    ${escapeHTML(
+      emptyText
+    )}
+  </small>
+
+</div>
+
+`;
+
+    return;
+  }
+
+
+  element.innerHTML =
     records
       .slice()
       .reverse()
       .slice(
         0,
-        12
+        10
       )
       .map(
-        recordCard
+        record => `
+
+<div class="ev">
+
+  <div class="evTop">
+
+    <span>
+      ${escapeHTML(
+        record.id ||
+        'Record'
+      )}
+    </span>
+
+    <span>
+      ${escapeHTML(
+        record.truth ||
+        '?'
+      )}
+    </span>
+
+  </div>
+
+  <small>
+    Domain ${escapeHTML(
+      record.domain ||
+      'general'
+    )}
+    · Prediction ${escapeHTML(
+      benchmarkPrediction(
+        record
+      )
+    )}
+    · Signal ${record.consensus?.calibrated ?? '?'}%
+    · Sufficiency ${record.consensus?.sufficiency?.score ?? '?'}%
+  </small>
+
+</div>
+
+`
       )
       .join('');
+}
 
 
-  panel.innerHTML = `
+/* ============================================================
+   BULK IMPORT
+============================================================ */
 
-<span class="over">
-  V6.2 BENCHMARK LAB • ADAPTIVE RELIABILITY
-</span>
+function parseBulkImport(
+  raw
+) {
 
-<h2>
-  Adaptive Reliability Lab
-</h2>
+  const lines =
+    raw
+      .split(
+        /\n/
+      )
+      .map(
+        line =>
+          line.trim()
+      )
+      .filter(Boolean);
 
-<p class="sub">
-  Detector weights only begin learning after minimum sample requirements are met. Small benchmark sets remain protected from overfitting.
-</p>
+
+  const samples = [];
+
+  const errors = [];
 
 
-<h3>
-  Calibration readiness
-</h3>
+  lines.forEach(
+    (
+      line,
+      index
+    ) => {
 
-<div class="evidence">
+      try {
 
-  <div class="ev">
+        const item =
+          JSON.parse(
+            line
+          );
 
-    <div class="evTop">
 
-      <span>
-        ${readiness.level}
-      </span>
+        const truth =
+          String(
+            item.truth ||
+            ''
+          )
+            .trim()
+            .toUpperCase();
 
-      <span>
-        ${
-          readiness.level ===
-            'COLLECTING'
-            ? 'LEARNING DISABLED / LIMITED'
-            : 'BENCHMARK LEARNING AVAILABLE'
+
+        if (
+          ![
+            'AI',
+            'HUMAN',
+            'MIXED',
+            'UNKNOWN'
+          ].includes(
+            truth
+          )
+        ) {
+
+          throw new Error(
+            'Invalid truth label'
+          );
         }
-      </span>
-
-    </div>
-
-    <small>
-      ${readiness.total} binary samples
-      · ${readiness.ai} AI
-      · ${readiness.human} HUMAN
-      · ${readiness.domains} domains
-      · ${mixed.length} MIXED
-    </small>
-
-  </div>
-
-</div>
 
 
-<h3>
-  Ensemble performance
-</h3>
-
-<div class="metrics">
-
-  <div class="metric">
-    <span>Binary samples</span>
-    <b>${metrics.total}</b>
-  </div>
-
-  <div class="metric">
-    <span>Coverage</span>
-    <b>${metrics.coverage}%</b>
-  </div>
-
-  <div class="metric">
-    <span>Selective accuracy</span>
-    <b>${metrics.selectiveAccuracy}%</b>
-  </div>
-
-  <div class="metric">
-    <span>Precision</span>
-    <b>${metrics.precision}%</b>
-  </div>
-
-  <div class="metric">
-    <span>AI recall</span>
-    <b>${metrics.recall}%</b>
-  </div>
-
-  <div class="metric">
-    <span>Human specificity</span>
-    <b>${metrics.specificity}%</b>
-  </div>
-
-  <div class="metric">
-    <span>False-positive rate</span>
-    <b>${metrics.fpr}%</b>
-  </div>
-
-  <div class="metric">
-    <span>False-negative rate</span>
-    <b>${metrics.fnr}%</b>
-  </div>
-
-  <div class="metric">
-    <span>AI abstention rate</span>
-    <b>${metrics.aiAbstainRate}%</b>
-  </div>
-
-  <div class="metric">
-    <span>Human abstention rate</span>
-    <b>${metrics.humanAbstainRate}%</b>
-  </div>
-
-</div>
+        const sampleText =
+          String(
+            item.text ||
+            ''
+          )
+            .trim();
 
 
-<h3>
-  Detector reliability
-</h3>
+        if (
+          wordCount(
+            sampleText
+          ) <
+          30
+        ) {
 
-<div class="evidence">
-  ${detectorHTML}
-</div>
+          throw new Error(
+            'Sample text is too short'
+          );
+        }
 
 
-<h3>
-  Domain performance
-</h3>
+        samples.push({
 
-<div class="metrics">
+          truth,
 
-  ${
-    domainHTML ||
-    `
-    <div class="metric">
-      <span>No domain data yet</span>
-      <b>—</b>
-    </div>
-    `
+          source:
+            String(
+              item.source ||
+              ''
+            ),
+
+          domain:
+            String(
+              item.domain ||
+              'general'
+            ),
+
+          text:
+            sampleText
+        });
+
+      } catch (
+        error
+      ) {
+
+        errors.push(
+          `Line ${index + 1}: ${error.message}`
+        );
+      }
+    }
+  );
+
+
+  return {
+
+    samples,
+
+    errors
+  };
+}
+
+
+function validateBulkImport() {
+
+  const raw =
+    $('bulkImportText')
+      ?.value ||
+    '';
+
+
+  const parsed =
+    parseBulkImport(
+      raw
+    );
+
+
+  if (
+    $('bulkImportCount')
+  ) {
+
+    $('bulkImportCount').textContent =
+      `${parsed.samples.length} samples detected`;
   }
 
-</div>
+
+  if (
+    $('bulkImportResult')
+  ) {
+
+    $('bulkImportResult')
+      .classList
+      .remove(
+        'hidden'
+      );
 
 
-<h3>
-  False-positive inspector
-</h3>
-
-<div class="evidence">
-
-  ${
-    fpHTML ||
-    `
-    <div class="ev">
-      <small>
-        No known HUMAN sample has been classified as AI.
-      </small>
-    </div>
-    `
+    $('bulkImportResult').innerHTML =
+      parsed.errors.length
+        ? `
+          <b>${parsed.samples.length} valid samples.</b><br>
+          ${parsed.errors
+            .map(
+              error =>
+                escapeHTML(
+                  error
+                )
+            )
+            .join(
+              '<br>'
+            )}
+        `
+        : `
+          <b>${parsed.samples.length} valid samples.</b><br>
+          No formatting errors detected.
+        `;
   }
 
-</div>
+
+  return parsed;
+}
 
 
-<h3>
-  False-negative inspector
-</h3>
+function importBulkSamples() {
 
-<div class="evidence">
+  const parsed =
+    validateBulkImport();
 
-  ${
-    fnHTML ||
-    `
-    <div class="ev">
-      <small>
-        No known AI sample has been classified as HUMAN.
-      </small>
-    </div>
-    `
+
+  if (
+    !parsed.samples.length
+  ) {
+
+    alert(
+      'No valid samples to import.'
+    );
+
+    return;
   }
 
-</div>
+
+  const queue =
+    loadJSON(
+      IMPORT_KEY,
+      []
+    );
 
 
-<h3>
-  Abstention inspector
-</h3>
+  const imported =
+    parsed.samples.map(
+      sample => ({
 
-<div class="evidence">
+        importId:
+          `IMP-${Date.now()}-${Math.random()
+            .toString(
+              36
+            )
+            .slice(
+              2,
+              8
+            )}`,
 
-  ${
-    abstentionHTML ||
-    `
-    <div class="ev">
-      <small>
-        No binary abstentions recorded.
-      </small>
-    </div>
-    `
+        status:
+          'PENDING',
+
+        createdAt:
+          nowISO(),
+
+        ...sample
+      })
+    );
+
+
+  saveJSON(
+    IMPORT_KEY,
+    [
+      ...queue,
+      ...imported
+    ]
+  );
+
+
+  if (
+    $('bulkImportResult')
+  ) {
+
+    $('bulkImportResult').innerHTML =
+      `<b>${imported.length} samples added to the local calibration queue.</b><br>
+       Bulk model execution will be added in the next calibration worker build.`;
   }
 
-</div>
+
+  alert(
+    `${imported.length} samples imported into the calibration queue.`
+  );
+}
 
 
-<h3>
-  Recent benchmark records
-</h3>
+/* ============================================================
+   EXPORT JSON
+============================================================ */
 
-<div class="evidence">
+function exportBenchmarkJSON() {
 
-  ${
-    recentHTML ||
-    `
-    <div class="ev">
-      <small>
-        No benchmark records yet.
-      </small>
-    </div>
-    `
-  }
+  const records =
+    loadBench();
 
-</div>
 
-`;
+  const payload = {
+
+    version:
+      VERSION,
+
+    exportedAt:
+      nowISO(),
+
+    readiness:
+      benchmarkReadiness(
+        records
+      ),
+
+    summary:
+      datasetSummary(
+        records
+      ),
+
+    ensemble:
+      evaluatePredictions(
+        binaryRecords(
+          records
+        ),
+        benchmarkPrediction
+      ),
+
+    domainPerformance:
+      domainPerformance(
+        records
+      ),
+
+    records
+  };
+
+
+  const blob =
+    new Blob(
+      [
+        JSON.stringify(
+          payload,
+          null,
+          2
+        )
+      ],
+      {
+        type:
+          'application/json'
+      }
+    );
+
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+
+  const anchor =
+    document.createElement(
+      'a'
+    );
+
+
+  anchor.href =
+    url;
+
+
+  anchor.download =
+    `AI-Trace-V63-Benchmark-${Date.now()}.json`;
+
+
+  document.body
+    .appendChild(
+      anchor
+    );
+
+
+  anchor.click();
+
+  anchor.remove();
+
+
+  URL.revokeObjectURL(
+    url
+  );
+}
+
+
+/* ============================================================
+   EXPORT CSV
+============================================================ */
+
+function exportBenchmarkCSV() {
+
+  const records =
+    loadBench();
+
+
+  const headers = [
+
+    'id',
+    'truth',
+    'source',
+    'version',
+    'timestamp',
+    'domain',
+    'language',
+    'words',
+    'tmr',
+    'e5',
+    'modern',
+    'humanEvidence',
+    'rawSignal',
+    'calibratedSignal',
+    'sufficiency',
+    'confidence',
+    'uncertainty',
+    'verdict',
+    'modelAgreement',
+    'modelSpread',
+    'segmentRange'
+  ];
+
+
+  const csvEscape =
+    value => {
+
+      const text =
+        String(
+          value ??
+          ''
+        );
+
+
+      if (
+        /[",\n]/.test(
+          text
+        )
+      ) {
+
+        return `"${text.replace(
+          /"/g,
+          '""'
+        )}"`;
+      }
+
+      return text;
+    };
+
+
+  const rows =
+    records.map(
+      record => [
+
+        record.id,
+
+        record.truth,
+
+        record.source,
+
+        record.version,
+
+        record.timestamp ||
+        record.savedAt,
+
+        record.domain,
+
+        record.language,
+
+        record.words,
+
+        record.scores?.tmr,
+
+        record.scores?.e5,
+
+        record.scores?.modern,
+
+        record.human?.score,
+
+        record.consensus?.raw,
+
+        record.consensus?.calibrated,
+
+        record.consensus?.sufficiency?.score,
+
+        record.consensus?.confidence,
+
+        record.consensus?.uncertainty,
+
+        record.consensus?.verdict,
+
+        record.consensus?.modelAgreement?.agreement,
+
+        record.consensus?.modelSpread,
+
+        record.consensus?.segmentRange
+
+      ]
+        .map(
+          csvEscape
+        )
+        .join(',')
+    );
+
+
+  const csv =
+    [
+      headers.join(
+        ','
+      ),
+      ...rows
+    ]
+      .join(
+        '\n'
+      );
+
+
+  const blob =
+    new Blob(
+      [
+        csv
+      ],
+      {
+        type:
+          'text/csv;charset=utf-8'
+      }
+    );
+
+
+  const url =
+    URL.createObjectURL(
+      blob
+    );
+
+
+  const anchor =
+    document.createElement(
+      'a'
+    );
+
+
+  anchor.href =
+    url;
+
+
+  anchor.download =
+    `AI-Trace-V63-Benchmark-${Date.now()}.csv`;
+
+
+  document.body
+    .appendChild(
+      anchor
+    );
+
+
+  anchor.click();
+
+  anchor.remove();
+
+
+  URL.revokeObjectURL(
+    url
+  );
 }
 
 
@@ -6902,285 +5853,192 @@ function saveHistory(
 
 
 /* ============================================================
-   JSON EXPORT
+   EVENT LISTENERS
 ============================================================ */
 
-function exportBenchmarkJSON() {
+if (
+  textEl
+) {
 
-  const records =
-    loadBench();
-
-
-  const data = {
-
-    version:
-      VERSION,
-
-    exportedAt:
-      nowISO(),
-
-    readiness:
-      benchmarkReadiness(
-        records
-      ),
-
-    ensemble:
-      evaluatePredictions(
-        binaryRecords(
-          records
-        ),
-        benchmarkPrediction
-      ),
-
-    domains:
-      domainPerformance(
-        records
-      ),
-
-    records
-  };
-
-
-  const blob =
-    new Blob(
-      [
-        JSON.stringify(
-          data,
-          null,
-          2
-        )
-      ],
-      {
-        type:
-          'application/json'
-      }
-    );
-
-
-  const url =
-    URL.createObjectURL(
-      blob
-    );
-
-
-  const anchor =
-    document.createElement(
-      'a'
-    );
-
-
-  anchor.href =
-    url;
-
-
-  anchor.download =
-    `AI-Trace-V62-Benchmark-${Date.now()}.json`;
-
-
-  document.body
-    .appendChild(
-      anchor
-    );
-
-
-  anchor.click();
-
-
-  anchor.remove();
-
-
-  URL.revokeObjectURL(
-    url
+  textEl.addEventListener(
+    'input',
+    updateCount
   );
 }
 
 
-/* ============================================================
-   CSV EXPORT
-============================================================ */
-
-function exportBenchmarkCSV() {
-
-  const records =
-    loadBench();
+$('scan')
+  ?.addEventListener(
+    'click',
+    runSmartScan
+  );
 
 
-  const headers = [
-    'id',
-    'truth',
-    'source',
-    'version',
-    'timestamp',
-    'domain',
-    'language',
-    'words',
-    'tmr',
-    'e5',
-    'modern',
-    'humanEvidence',
-    'rawSignal',
-    'calibratedSignal',
-    'sufficiency',
-    'confidence',
-    'uncertainty',
-    'verdict',
-    'modelSpread',
-    'segmentRange'
-  ];
+$('demo')
+  ?.addEventListener(
+    'click',
+    loadDemo
+  );
 
 
-  const csvEscape =
-    value => {
+$('clear')
+  ?.addEventListener(
+    'click',
+    () => {
 
-      const text =
-        String(
-          value ??
+      if (
+        textEl
+      ) {
+
+        textEl.value =
+          '';
+      }
+
+      updateCount();
+
+
+      $('report')
+        ?.classList
+        .add(
+          'hidden'
+        );
+    }
+  );
+
+
+$('openBulkImport')
+  ?.addEventListener(
+    'click',
+    () => {
+
+      $('bulkImportPanel')
+        ?.classList
+        .remove(
+          'hidden'
+        );
+
+      $('bulkImportPanel')
+        ?.scrollIntoView({
+
+          behavior:
+            'smooth',
+
+          block:
+            'start'
+        });
+    }
+  );
+
+
+$('closeBulkImport')
+  ?.addEventListener(
+    'click',
+    () => {
+
+      $('bulkImportPanel')
+        ?.classList
+        .add(
+          'hidden'
+        );
+    }
+  );
+
+
+$('bulkImportText')
+  ?.addEventListener(
+    'input',
+    () => {
+
+      const parsed =
+        parseBulkImport(
+          $('bulkImportText')
+            ?.value ||
           ''
         );
 
 
       if (
-        /[",\n]/.test(
-          text
-        )
+        $('bulkImportCount')
       ) {
 
-        return `"${text.replace(
-          /"/g,
-          '""'
-        )}"`;
+        $('bulkImportCount').textContent =
+          `${parsed.samples.length} samples detected`;
+      }
+    }
+  );
+
+
+$('validateBulkImport')
+  ?.addEventListener(
+    'click',
+    validateBulkImport
+  );
+
+
+$('importBulkSamples')
+  ?.addEventListener(
+    'click',
+    importBulkSamples
+  );
+
+
+$('exportBenchmarkJSON')
+  ?.addEventListener(
+    'click',
+    exportBenchmarkJSON
+  );
+
+
+$('exportBenchmarkCSV')
+  ?.addEventListener(
+    'click',
+    exportBenchmarkCSV
+  );
+
+
+$('clearBenchmark')
+  ?.addEventListener(
+    'click',
+    () => {
+
+      const confirmation =
+        confirm(
+          'Delete all V6.3 benchmark records from this browser?'
+        );
+
+
+      if (
+        !confirmation
+      ) {
+
+        return;
       }
 
 
-      return text;
-    };
-
-
-  const rows =
-    records.map(
-      record => [
-
-        record.id,
-
-        record.truth,
-
-        record.source,
-
-        record.version,
-
-        record.timestamp ||
-        record.savedAt,
-
-        record.domain,
-
-        record.language,
-
-        record.words,
-
-        record.scores?.tmr,
-
-        record.scores?.e5,
-
-        record.scores?.modern,
-
-        record.human?.score,
-
-        record.consensus?.raw,
-
-        record.consensus?.calibrated,
-
-        record.consensus
-          ?.sufficiency
-          ?.score ??
-        record.consensus
-          ?.quality,
-
-        record.consensus?.confidence,
-
-        record.consensus?.uncertainty,
-
-        record.consensus?.verdict,
-
-        record.consensus?.modelSpread,
-
-        record.consensus?.segmentRange
-
-      ]
-        .map(
-          csvEscape
-        )
-        .join(',')
-    );
-
-
-  const csv =
-    [
-      headers.join(
-        ','
-      ),
-
-      ...rows
-    ]
-      .join(
-        '\n'
+      localStorage.removeItem(
+        BENCH_KEY
       );
 
 
-  const blob =
-    new Blob(
-      [csv],
-      {
-        type:
-          'text/csv;charset=utf-8'
-      }
-    );
+      renderDatasetManager();
+
+      renderCalibrationLab();
 
 
-  const url =
-    URL.createObjectURL(
-      blob
-    );
-
-
-  const anchor =
-    document.createElement(
-      'a'
-    );
-
-
-  anchor.href =
-    url;
-
-
-  anchor.download =
-    `AI-Trace-V62-Benchmark-${Date.now()}.csv`;
-
-
-  document.body
-    .appendChild(
-      anchor
-    );
-
-
-  anchor.click();
-
-
-  anchor.remove();
-
-
-  URL.revokeObjectURL(
-    url
+      alert(
+        'V6.3 benchmark dataset deleted.'
+      );
+    }
   );
-}
 
 
 /* ============================================================
-   DEVELOPER UTILITIES
+   DEVELOPER API
 ============================================================ */
 
-window.AITraceV62 = {
+window.AITraceV63 = {
 
-  benchmark() {
+  report() {
 
     const records =
       loadBench();
@@ -7191,12 +6049,17 @@ window.AITraceV62 = {
       version:
         VERSION,
 
+      summary:
+        datasetSummary(
+          records
+        ),
+
       readiness:
         benchmarkReadiness(
           records
         ),
 
-      ensemble:
+      metrics:
         evaluatePredictions(
           binaryRecords(
             records
@@ -7230,12 +6093,22 @@ window.AITraceV62 = {
 
 
   reliability(
-    domain = 'general'
+    domain =
+      'general'
   ) {
 
     return buildModelReliability(
       domain,
       loadBench()
+    );
+  },
+
+
+  importedQueue() {
+
+    return loadJSON(
+      IMPORT_KEY,
+      []
     );
   },
 
@@ -7263,75 +6136,44 @@ window.AITraceV62 = {
 
   clearBenchmark() {
 
-    const confirmation =
-      confirm(
-        'Delete all V6.2 benchmark records from this device?'
-      );
-
-
-    if (
-      !confirmation
-    ) {
-
-      return;
-    }
-
-
     localStorage.removeItem(
       BENCH_KEY
     );
 
+    renderDatasetManager();
 
-    renderBenchmarkPanel();
+    renderCalibrationLab();
+  },
 
 
-    alert(
-      'V6.2 benchmark data deleted.'
+  clearImports() {
+
+    localStorage.removeItem(
+      IMPORT_KEY
     );
   },
 
 
   clearHistory() {
 
-    const confirmation =
-      confirm(
-        'Delete local V6.2 scan history?'
-      );
-
-
-    if (
-      !confirmation
-    ) {
-
-      return;
-    }
-
-
     localStorage.removeItem(
       HISTORY_KEY
-    );
-
-
-    alert(
-      'V6.2 scan history deleted.'
     );
   }
 };
 
 
 /* ============================================================
-   INITIALIZATION
+   INITIALIZE
 ============================================================ */
 
 updateCount();
 
+renderDatasetManager();
 
-setTimeout(
-  renderBenchmarkPanel,
-  350
-);
+renderCalibrationLab();
 
 
 console.info(
-  `AI TRACE V${VERSION} loaded`
+  `AI TRACE V${VERSION} loaded successfully`
 );

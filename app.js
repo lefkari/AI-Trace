@@ -28,7 +28,7 @@ env.useBrowserCache = true;
    VERSION
 ============================================================ */
 
-const VERSION = '6.7';
+const VERSION = '6.8';
 
 
 /* ============================================================
@@ -1717,7 +1717,9 @@ function dominantRawOutput(
 ============================================================ */
 
 function aiProbability(
-  output
+  output,
+  detectorName =
+    'unknown'
 ) {
 
   const results =
@@ -1725,10 +1727,17 @@ function aiProbability(
       output
     );
 
+  const detector =
+    String(
+      detectorName ||
+      'unknown'
+    )
+      .toLowerCase()
+      .trim();
+
 
   let ai =
     null;
-
 
   let human =
     null;
@@ -1741,7 +1750,6 @@ function aiProbability(
 
     const label =
       item.normalizedLabel;
-
 
     const score =
       item.score;
@@ -1757,7 +1765,25 @@ function aiProbability(
     }
 
 
-    if (
+    /*
+      V6.8 detector-aware mapping.
+
+      Diagnostic audit on the known-origin benchmark established:
+
+      E5-small:
+        LABEL_0 -> AI
+        LABEL_1 -> HUMAN
+
+      ModernBERT:
+        LABEL_0 -> AI
+        LABEL_1 -> HUMAN
+
+      TMR:
+        Prefer its explicit semantic labels (human / AI / generated / machine).
+        Do not force generic LABEL_0/LABEL_1 semantics onto TMR.
+    */
+
+    const explicitAI =
       label.includes(
         'ai'
       ) ||
@@ -1766,9 +1792,16 @@ function aiProbability(
       ) ||
       label.includes(
         'generated'
-      ) ||
-      label ===
-        'label_1'
+      );
+
+    const explicitHuman =
+      label.includes(
+        'human'
+      );
+
+
+    if (
+      explicitAI
     ) {
 
       ai =
@@ -1777,15 +1810,13 @@ function aiProbability(
             0,
           score
         );
+
+      continue;
     }
 
 
     if (
-      label.includes(
-        'human'
-      ) ||
-      label ===
-        'label_0'
+      explicitHuman
     ) {
 
       human =
@@ -1794,6 +1825,44 @@ function aiProbability(
             0,
           score
         );
+
+      continue;
+    }
+
+
+    if (
+      detector ===
+        'e5' ||
+      detector ===
+        'modern'
+    ) {
+
+      if (
+        label ===
+          'label_0'
+      ) {
+
+        ai =
+          Math.max(
+            ai ??
+              0,
+            score
+          );
+      }
+
+
+      if (
+        label ===
+          'label_1'
+      ) {
+
+        human =
+          Math.max(
+            human ??
+              0,
+            score
+          );
+      }
     }
   }
 
@@ -1818,44 +1887,20 @@ function aiProbability(
 
     return clamp(
       1 -
-      human,
+        human,
       0,
       1
     );
   }
 
 
-  if (
-    results.length >=
-    2
-  ) {
-
-    const second =
-      Number(
-        results[
-          1
-        ]?.score
-      );
-
-
-    if (
-      Number.isFinite(
-        second
-      )
-    ) {
-
-      return clamp(
-        second,
-        0,
-        1
-      );
-    }
-  }
-
+  /*
+    Unknown detector / unknown label family:
+    abstain neutrally instead of guessing from array order.
+  */
 
   return 0.5;
 }
-
 
 /* ============================================================
    DETECTOR VOTE
@@ -1938,7 +1983,8 @@ async function classifyDiagnostic(
 
     const mappedProbability =
       aiProbability(
-        output
+        output,
+        detectorName
       );
 
 

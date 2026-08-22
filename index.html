@@ -20,7 +20,7 @@
   >
 
   <title>
-    AI Trace V6.6 — Digital Authenticity Intelligence
+    AI Trace V6.7 — Diagnostic Calibration Engine
   </title>
 
   <link
@@ -48,11 +48,15 @@
       </div>
 
       <div>
-        <b>AI TRACE</b>
+
+        <b>
+          AI TRACE
+        </b>
 
         <small>
           Digital Authenticity Intelligence
         </small>
+
       </div>
 
     </div>
@@ -68,7 +72,7 @@
       </span>
 
       <span class="pill">
-        V6.6 • DATASET ENGINE
+        V6.7 • DIAGNOSTIC ENGINE
       </span>
 
     </div>
@@ -84,7 +88,7 @@
   <header>
 
     <span class="over">
-      TRACE DNA™ • TEXT ENGINE V6.6
+      TRACE DNA™ • TEXT ENGINE V6.7
     </span>
 
     <h1>
@@ -94,9 +98,9 @@
 
     <p>
       Evidence-first AI text analysis using multiple local detectors,
-      adaptive reliability weighting, domain awareness,
-      human counter-evidence, conservative abstention
-      and benchmark-driven calibration.
+      adaptive reliability weighting, raw-output diagnostics,
+      domain awareness, human counter-evidence,
+      conservative abstention and benchmark-driven calibration.
     </p>
 
   </header>
@@ -158,7 +162,7 @@
         id="modelState"
         class="state"
       >
-        Smart engine standby
+        Diagnostic engine standby
       </span>
 
     </div>
@@ -226,7 +230,6 @@
 
   <!-- ======================================================
        SCAN REPORT
-       HIDDEN UNTIL SCAN
   ======================================================= -->
 
   <section
@@ -366,9 +369,11 @@
           <span
             id="engineBadge"
             class="pill"
-          ></span>
+          >
+          </span>
 
         </div>
+
 
         <div
           id="evidence"
@@ -393,6 +398,63 @@
           id="metrics"
           class="metrics"
         ></div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         RAW DETECTOR DIAGNOSTICS FOR CURRENT SCAN
+    ===================================================== -->
+
+    <div class="panel labPanel">
+
+      <div class="sectionTitle">
+
+        <div>
+
+          <span class="over">
+            V6.7 RAW MODEL OUTPUT
+          </span>
+
+          <h2>
+            Detector diagnostics
+          </h2>
+
+        </div>
+
+        <span
+          id="scanDiagnosticStatus"
+          class="pill"
+        >
+          WAITING
+        </span>
+
+      </div>
+
+
+      <p class="sub">
+        Raw labels and raw classifier scores are displayed before
+        AI Trace converts detector output into an AI probability.
+        This layer is used to detect label inversions,
+        mapping errors and detector disagreement.
+      </p>
+
+
+      <div
+        id="scanRawDiagnostics"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <small>
+            Run a Smart Scan to inspect detector outputs.
+          </small>
+
+        </div>
 
       </div>
 
@@ -447,7 +509,6 @@
 
   <!-- ======================================================
        DATASET MANAGER
-       ALWAYS VISIBLE
   ======================================================= -->
 
   <section
@@ -460,7 +521,7 @@
       <div>
 
         <span class="over">
-          V6.6 BENCHMARK DATASET
+          V6.7 BENCHMARK DATASET
         </span>
 
         <h2>
@@ -482,7 +543,7 @@
     <p class="sub">
       Build a known-origin benchmark dataset and use it to measure
       detector reliability, coverage, false positives,
-      false negatives and abstention behavior.
+      false negatives, abstention behavior and raw-label integrity.
     </p>
 
 
@@ -495,38 +556,93 @@
     >
 
       <div class="metric">
-        <span>Total records</span>
-        <b id="datasetTotal">0</b>
+
+        <span>
+          Total records
+        </span>
+
+        <b id="datasetTotal">
+          0
+        </b>
+
       </div>
 
-      <div class="metric">
-        <span>Binary samples</span>
-        <b id="datasetBinary">0</b>
-      </div>
 
       <div class="metric">
-        <span>Known AI</span>
-        <b id="datasetAI">0</b>
+
+        <span>
+          Binary samples
+        </span>
+
+        <b id="datasetBinary">
+          0
+        </b>
+
       </div>
 
-      <div class="metric">
-        <span>Known HUMAN</span>
-        <b id="datasetHuman">0</b>
-      </div>
 
       <div class="metric">
-        <span>MIXED</span>
-        <b id="datasetMixed">0</b>
+
+        <span>
+          Known AI
+        </span>
+
+        <b id="datasetAI">
+          0
+        </b>
+
       </div>
 
-      <div class="metric">
-        <span>UNKNOWN</span>
-        <b id="datasetUnknown">0</b>
-      </div>
 
       <div class="metric">
-        <span>Domains</span>
-        <b id="datasetDomains">0</b>
+
+        <span>
+          Known HUMAN
+        </span>
+
+        <b id="datasetHuman">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          MIXED
+        </span>
+
+        <b id="datasetMixed">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          UNKNOWN
+        </span>
+
+        <b id="datasetUnknown">
+          0
+        </b>
+
+      </div>
+
+
+      <div class="metric">
+
+        <span>
+          Domains
+        </span>
+
+        <b id="datasetDomains">
+          0
+        </b>
+
       </div>
 
     </div>
@@ -565,6 +681,15 @@
 
 
       <button
+        id="runDiagnosticAudit"
+        class="soft"
+        type="button"
+      >
+        Run Diagnostic Audit
+      </button>
+
+
+      <button
         id="exportBenchmarkJSON"
         class="soft"
         type="button"
@@ -579,6 +704,15 @@
         type="button"
       >
         Export CSV
+      </button>
+
+
+      <button
+        id="exportDiagnosticJSON"
+        class="soft"
+        type="button"
+      >
+        Export Diagnostics
       </button>
 
 
@@ -663,7 +797,7 @@
 
 
   <!-- ======================================================
-       V6.6 DATASET IMPORTER
+       DATASET IMPORTER
   ======================================================= -->
 
   <section
@@ -676,7 +810,7 @@
       <div>
 
         <span class="over">
-          V6.6 DATASET IMPORTER
+          V6.7 DATASET IMPORTER
         </span>
 
         <h2>
@@ -704,9 +838,7 @@
 
 
 
-    <!-- ====================================================
-         FILE IMPORT
-    ===================================================== -->
+    <!-- FILE IMPORT -->
 
     <div class="importBox">
 
@@ -741,6 +873,7 @@
         >
           Choose Dataset File
         </button>
+
 
         <button
           id="clearDatasetFile"
@@ -784,9 +917,7 @@
 
 
 
-    <!-- ====================================================
-         FORMAT INFORMATION
-    ===================================================== -->
+    <!-- FORMAT -->
 
     <div class="warning">
 
@@ -822,9 +953,7 @@
 
 
 
-    <!-- ====================================================
-         PASTE IMPORT
-    ===================================================== -->
+    <!-- PASTE IMPORT -->
 
     <div class="importBox">
 
@@ -845,7 +974,6 @@
 
 {"truth":"AI","source":"Known AI source","domain":"general","text":"Sample text here..."}'
       ></textarea>
-
 
 
       <div class="bulkActions">
@@ -878,10 +1006,6 @@
 
 
 
-    <!-- ====================================================
-         VALIDATION RESULT
-    ===================================================== -->
-
     <div
       id="bulkImportResult"
       class="importResult hidden"
@@ -889,9 +1013,7 @@
 
 
 
-    <!-- ====================================================
-         IMPORT STATISTICS
-    ===================================================== -->
+    <!-- IMPORT STATS -->
 
     <div
       id="importPreview"
@@ -982,8 +1104,373 @@
 
 
   <!-- ======================================================
+       V6.7 DIAGNOSTIC CALIBRATION LAB
+  ======================================================= -->
+
+  <section
+    id="diagnosticLab"
+    class="panel labPanel"
+  >
+
+    <div class="sectionTitle">
+
+      <div>
+
+        <span class="over">
+          V6.7 DIAGNOSTIC CALIBRATION
+        </span>
+
+        <h2>
+          Raw Detector Audit
+        </h2>
+
+      </div>
+
+
+      <span
+        id="diagnosticStatusBadge"
+        class="pill"
+      >
+        NOT AUDITED
+      </span>
+
+    </div>
+
+
+    <p class="sub">
+      This diagnostic layer inspects detector output before consensus
+      calibration. It is designed to identify label inversion,
+      output-mapping errors, detector collapse and systematic
+      AI/HUMAN direction mistakes.
+    </p>
+
+
+
+    <!-- ====================================================
+         DIAGNOSTIC SUMMARY
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Diagnostic summary
+      </h3>
+
+
+      <div
+        id="diagnosticSummary"
+        class="metrics"
+      >
+
+        <div class="metric">
+
+          <span>
+            Audited samples
+          </span>
+
+          <b id="diagnosticSampleCount">
+            0
+          </b>
+
+        </div>
+
+
+        <div class="metric">
+
+          <span>
+            Mapping warnings
+          </span>
+
+          <b id="diagnosticMappingWarnings">
+            0
+          </b>
+
+        </div>
+
+
+        <div class="metric">
+
+          <span>
+            Detector failures
+          </span>
+
+          <b id="diagnosticModelFailures">
+            0
+          </b>
+
+        </div>
+
+
+        <div class="metric">
+
+          <span>
+            Possible inversions
+          </span>
+
+          <b id="diagnosticPossibleInversions">
+            0
+          </b>
+
+        </div>
+
+
+        <div class="metric">
+
+          <span>
+            Strong disagreements
+          </span>
+
+          <b id="diagnosticDisagreements">
+            0
+          </b>
+
+        </div>
+
+
+        <div class="metric">
+
+          <span>
+            Audit coverage
+          </span>
+
+          <b id="diagnosticCoverage">
+            0%
+          </b>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         LABEL MAPPING STATUS
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Label mapping integrity
+      </h3>
+
+
+      <div
+        id="labelMappingStatus"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <div class="evTop">
+
+            <span>
+              Awaiting diagnostic audit
+            </span>
+
+            <span>
+              UNKNOWN
+            </span>
+
+          </div>
+
+          <small>
+            Raw model labels have not yet been compared
+            against known-origin benchmark samples.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         PER-DETECTOR RAW OUTPUT
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Detector raw-output integrity
+      </h3>
+
+
+      <div
+        id="detectorRawDiagnostics"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <small>
+            Run Diagnostic Audit to inspect TMR,
+            E5-small and ModernBERT raw outputs.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         AI CONTROL RESULTS
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Known-AI control audit
+      </h3>
+
+      <p class="sub">
+        Shows how each detector behaves on benchmark samples
+        whose origin is definitely AI.
+      </p>
+
+
+      <div
+        id="diagnosticAIControls"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <small>
+            No diagnostic AI-control results yet.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         HUMAN CONTROL RESULTS
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Known-HUMAN control audit
+      </h3>
+
+      <p class="sub">
+        Shows how each detector behaves on benchmark samples
+        whose origin is definitely HUMAN.
+      </p>
+
+
+      <div
+        id="diagnosticHumanControls"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <small>
+            No diagnostic HUMAN-control results yet.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         RAW RECORD INSPECTOR
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Raw-output record inspector
+      </h3>
+
+      <p class="sub">
+        Each record displays ground truth, detector raw label,
+        raw confidence, mapped AI probability and final detector vote.
+      </p>
+
+
+      <div
+        id="diagnosticRecords"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <small>
+            No diagnostic records available.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+
+    <!-- ====================================================
+         DIAGNOSTIC CONCLUSION
+    ===================================================== -->
+
+    <div class="labSection">
+
+      <h3>
+        Diagnostic conclusion
+      </h3>
+
+
+      <div
+        id="diagnosticConclusion"
+        class="evidence"
+      >
+
+        <div class="ev">
+
+          <div class="evTop">
+
+            <span>
+              Diagnosis pending
+            </span>
+
+            <span>
+              WAITING
+            </span>
+
+          </div>
+
+          <small>
+            AI Trace will not alter detector label mapping
+            automatically until diagnostic evidence is available.
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+
+  <!-- ======================================================
        CALIBRATION LAB
-       ALWAYS VISIBLE
   ======================================================= -->
 
   <section
@@ -996,7 +1483,7 @@
       <div>
 
         <span class="over">
-          V6.6 CALIBRATION LAB
+          V6.7 CALIBRATION LAB
         </span>
 
         <h2>
@@ -1018,9 +1505,9 @@
 
     <p class="sub">
       Benchmark results describe only the known-origin samples
-      stored locally in this browser. Adaptive weighting should
-      remain conservative until the dataset becomes sufficiently
-      large and diverse.
+      stored locally in this browser. Adaptive weighting remains
+      conservative until the dataset becomes sufficiently large,
+      balanced and diverse.
     </p>
 
 
@@ -1054,7 +1541,7 @@
           </div>
 
           <small>
-            More known-origin samples are required.
+            More balanced known-origin samples are required.
           </small>
 
         </div>
@@ -1134,9 +1621,11 @@
       >
 
         <div class="ev">
+
           <small>
             No false positives recorded.
           </small>
+
         </div>
 
       </div>
@@ -1163,9 +1652,11 @@
       >
 
         <div class="ev">
+
           <small>
             No false negatives recorded.
           </small>
+
         </div>
 
       </div>
@@ -1193,9 +1684,11 @@
       >
 
         <div class="ev">
+
           <small>
             No abstentions recorded.
           </small>
+
         </div>
 
       </div>
@@ -1217,9 +1710,10 @@
     </b>
 
     Accuracy, precision, recall, specificity,
-    false-positive rate, false-negative rate and other
-    metrics displayed by AI Trace describe only the
-    benchmark samples currently stored in this browser.
+    false-positive rate, false-negative rate,
+    diagnostic mappings and other metrics displayed
+    by AI Trace describe only the benchmark samples
+    currently available to this browser.
 
     They are not production accuracy claims.
 
@@ -1252,11 +1746,12 @@
 
   <footer>
 
-    AI TRACE V6.6
-    · Adaptive local inference
+    AI TRACE V6.7
+    · Raw Detector Diagnostics
+    · Adaptive Local Inference
     · Dataset Importer
     · Calibration Lab
-    · Zero paid API
+    · Zero Paid API
 
   </footer>
 
